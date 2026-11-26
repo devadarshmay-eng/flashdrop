@@ -51,7 +51,7 @@ jobs:
   deploy-production:
     name: Deploy Production
     needs: [verify]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -62,7 +62,18 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check Cloudflare Credentials
+        id: check-creds
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::notice title=Cloudflare Credentials::CLOUDFLARE_API_TOKEN is not configured in repository secrets. Deploy step skipped."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy Worker to Cloudflare
+        if: steps.check-creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -71,6 +82,7 @@ jobs:
           command: deploy
 
       - name: Build Web for Production
+        if: steps.check-creds.outputs.configured == 'true'
         env:
           VITE_WS_URL: wss://flashdrop-signaling.wick47501.workers.dev
         run: |
@@ -79,6 +91,7 @@ jobs:
           npm run build
 
       - name: Deploy Web to Cloudflare Pages
+        if: steps.check-creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -89,7 +102,7 @@ jobs:
   deploy-preview:
     name: Deploy Preview
     needs: [verify]
-    if: github.event_name == 'pull_request' && secrets.CLOUDFLARE_API_TOKEN != ''
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -100,7 +113,18 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check Cloudflare Credentials
+        id: check-creds
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::notice title=Cloudflare Credentials::CLOUDFLARE_API_TOKEN is not configured in repository secrets. Preview deploy skipped."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build Web for Preview
+        if: steps.check-creds.outputs.configured == 'true'
         env:
           VITE_WS_URL: wss://flashdrop-signaling.wick47501.workers.dev
         run: |
@@ -109,6 +133,7 @@ jobs:
           npm run build
 
       - name: Deploy Web Preview to Cloudflare Pages
+        if: steps.check-creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
