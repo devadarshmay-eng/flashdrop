@@ -91,6 +91,16 @@ jobs:
           npm install
           npm run build
 
+      - name: Ensure Cloudflare Pages Project Exists
+        if: steps.check-creds.outputs.configured == 'true'
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'web'
+          command: pages project create getflashdrop --production-branch=main
+
       - name: Deploy Web to Cloudflare Pages
         if: steps.check-creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
@@ -98,7 +108,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'web'
-          command: pages deploy dist --project-name=getflashdrop --branch=main
+          command: pages deploy dist --project-name=getflashdrop --branch=main --commit-dirty=true
 
   deploy-preview:
     name: Deploy Preview
@@ -133,6 +143,16 @@ jobs:
           npm install
           npm run build
 
+      - name: Ensure Cloudflare Pages Project Exists
+        if: steps.check-creds.outputs.configured == 'true'
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'web'
+          command: pages project create getflashdrop --production-branch=main
+
       - name: Deploy Web Preview to Cloudflare Pages
         if: steps.check-creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
@@ -140,4 +160,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'web'
-          command: pages deploy dist --project-name=getflashdrop --branch=${{ github.head_ref }}
+          command: pages deploy dist --project-name=getflashdrop --branch=${{ github.head_ref }} --commit-dirty=true
