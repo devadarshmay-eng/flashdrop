@@ -61,6 +61,7 @@ export interface TransferProgress {
   direction: 'send' | 'receive';
   blob?: Blob;
   objectUrl?: string;
+  thumbnailUrl?: string;
   error?: string;
 }
 

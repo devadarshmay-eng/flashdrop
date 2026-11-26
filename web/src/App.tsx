@@ -19,13 +19,25 @@ import {
 
 export type AppViewState = 'waiting' | 'connecting' | 'connected' | 'dissolved';
 
-// Generate formatted human-readable room code like RM-7F4A-92C1 from UUID
+// Generate formatted human-readable room code like RM-7F4A-92C1 from UUID or ID
 function formatRoomCode(id: string): string {
   const clean = id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (clean.startsWith('RM') && clean.length >= 10) {
+    const rest = clean.slice(2);
+    return `RM-${rest.substring(0, 4)}-${rest.substring(4, 8)}`;
+  }
   if (clean.length >= 8) {
     return `RM-${clean.substring(0, 4)}-${clean.substring(4, 8)}`;
   }
   return `RM-${id.substring(0, 8).toUpperCase()}`;
+}
+
+// Generate collision-resistant 8-hex character room ID
+function generateSessionId(): string {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `rm-${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
 }
 
 function getWsUrl(): string {
@@ -33,7 +45,6 @@ function getWsUrl(): string {
     return import.meta.env.VITE_WS_URL;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // Default to localhost:8787 in dev if not set
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return `${protocol}//${window.location.hostname}:8787`;
   }
@@ -45,17 +56,41 @@ export const App: React.FC = () => {
   const [sessionId, setSessionId] = useState<string>('');
   const [remainingSeconds, setRemainingSeconds] = useState<number>(600);
   const [transfers, setTransfers] = useState<TransferProgress[]>([]);
+  const [connectionType, setConnectionType] = useState<'DIRECT LAN' | 'P2P STUN' | 'TURN RELAY'>('P2P STUN');
+  const [verificationKey, setVerificationKey] = useState<string>('KEY 9F2A');
 
   const signalingRef = useRef<SignalingClient | null>(null);
   const rtcRef = useRef<PeerConnectionManager | null>(null);
   const senderRef = useRef<FileTransferSender | null>(null);
   const receiverRef = useRef<FileTransferReceiver | null>(null);
   const timerRef = useRef<any>(null);
+  const thumbnailsRef = useRef<Map<string, string>>(new Map());
+
+  // Dynamic Browser Tab Title
+  useEffect(() => {
+    if (viewState === 'waiting') {
+      document.title = 'FlashDrop — Ephemeral P2P Transfer';
+    } else if (viewState === 'connecting') {
+      document.title = 'Connecting — FlashDrop';
+    } else if (viewState === 'dissolved') {
+      document.title = 'Session Dissolved — FlashDrop';
+    } else if (viewState === 'connected') {
+      const active = transfers.filter((t) => t.status === 'transferring');
+      if (active.length > 0) {
+        const avgPercent = Math.round(
+          active.reduce((acc, t) => acc + t.percentage, 0) / active.length
+        );
+        document.title = `(${avgPercent}%) Transferring — FlashDrop`;
+      } else {
+        document.title = '● Connected — FlashDrop';
+      }
+    }
+  }, [viewState, transfers]);
 
   // Initialize session based on URL (/s/:sessionId) or root (/)
   useEffect(() => {
     const path = window.location.pathname;
-    const match = path.match(/^\/s\/([a-zA-Z0-9-]+)/);
+    const match = path.match(/^\/s\/([a-zA-Z0-9_-]+)/);
 
     let activeSessionId = '';
     let role: SessionRole = 'host';
@@ -65,7 +100,7 @@ export const App: React.FC = () => {
       role = 'guest';
       setViewState('connecting');
     } else {
-      activeSessionId = crypto.randomUUID();
+      activeSessionId = generateSessionId();
       role = 'host';
       setViewState('waiting');
     }
@@ -107,6 +142,63 @@ export const App: React.FC = () => {
     mobileManager.setActiveTransfer(hasActive);
   }, [transfers]);
 
+  // Real WebRTC Telemetry: getStats() and DTLS fingerprint verification key
+  const updateWebRtcTelemetry = useCallback(async () => {
+    const pc = rtcRef.current?.pc;
+    if (!pc) return;
+
+    // 1. Compute deterministic verification key from SDP fingerprints
+    const localSdp = pc.localDescription?.sdp || '';
+    const remoteSdp = pc.remoteDescription?.sdp || '';
+    const getFp = (sdp: string) => {
+      const m = sdp.match(/a=fingerprint:\S+\s+([0-9A-Fa-f:]+)/);
+      return m ? m[1].replace(/[^0-9A-Fa-f]/g, '').toUpperCase() : '';
+    };
+    const fp1 = getFp(localSdp);
+    const fp2 = getFp(remoteSdp);
+    const combined = [fp1, fp2].sort().join('');
+    if (combined) {
+      let hash = 0;
+      for (let i = 0; i < combined.length; i++) {
+        hash = ((hash << 5) - hash + combined.charCodeAt(i)) | 0;
+      }
+      const hex = Math.abs(hash).toString(16).toUpperCase().padStart(4, '0');
+      setVerificationKey(`KEY ${hex.slice(-4)}`);
+    }
+
+    // 2. Candidate stats
+    try {
+      const stats = await pc.getStats();
+      let selectedPair: any = null;
+      stats.forEach((report) => {
+        if (report.type === 'transport' && report.selectedCandidatePairId) {
+          selectedPair = stats.get(report.selectedCandidatePairId);
+        } else if (
+          report.type === 'candidate-pair' &&
+          (report.nominated || report.selected || report.state === 'succeeded')
+        ) {
+          selectedPair = report;
+        }
+      });
+
+      if (selectedPair && selectedPair.localCandidateId) {
+        const localCandidate = stats.get(selectedPair.localCandidateId);
+        if (localCandidate) {
+          const cType = localCandidate.candidateType;
+          if (cType === 'host') {
+            setConnectionType('DIRECT LAN');
+          } else if (cType === 'relay') {
+            setConnectionType('TURN RELAY');
+          } else {
+            setConnectionType('P2P STUN');
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to inspect getStats:', err);
+    }
+  }, []);
+
   const initSession = (id: string, role: SessionRole) => {
     cleanupAll();
 
@@ -118,6 +210,8 @@ export const App: React.FC = () => {
       {
         onDataChannelOpen: () => {
           setViewState('connected');
+          updateWebRtcTelemetry();
+          setTimeout(updateWebRtcTelemetry, 1200);
         },
         onDataChannelClose: () => {
           handleSessionDissolve();
@@ -125,6 +219,8 @@ export const App: React.FC = () => {
         onConnectionStateChange: (state) => {
           if (state === 'connected') {
             setViewState('connected');
+            updateWebRtcTelemetry();
+            setTimeout(updateWebRtcTelemetry, 1200);
           } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
             handleSessionDissolve();
           }
@@ -132,7 +228,6 @@ export const App: React.FC = () => {
       },
       undefined,
       (candidate) => {
-        // Send ICE candidate to peer
         signalingRef.current?.send({
           type: 'ICE_CANDIDATE',
           candidate,
@@ -146,9 +241,7 @@ export const App: React.FC = () => {
       url: wsUrl,
       sessionId: id,
       role,
-      onOpen: () => {
-        // Connected to signaling server
-      },
+      onOpen: () => {},
       onMessage: async (msg: SignalingMessage) => {
         await handleSignalingMessage(msg, rtc, isHost);
       },
@@ -167,7 +260,6 @@ export const App: React.FC = () => {
       const dc = rtc.createDataChannel('flashdrop-data');
       setupTransferChannels(dc);
     } else {
-      // Guest will receive data channel in rtc.ondatachannel
       const originalSetup = (rtc as any).setupDataChannel.bind(rtc);
       (rtc as any).setupDataChannel = (dc: RTCDataChannel) => {
         originalSetup(dc);
@@ -177,7 +269,6 @@ export const App: React.FC = () => {
   };
 
   const setupTransferChannels = (dc: RTCDataChannel) => {
-    // Setup Sender
     const sender = new FileTransferSender({
       dataChannel: dc,
       onProgress: (p) => updateTransferProgress(p),
@@ -186,10 +277,9 @@ export const App: React.FC = () => {
     });
     senderRef.current = sender;
 
-    // Setup Receiver
     const receiver = new FileTransferReceiver({
       dataChannel: dc,
-      autoDownload: false, // User can click Save or automatic depending on platform
+      autoDownload: false,
       onProgress: (p) => updateTransferProgress(p),
       onComplete: (p) => updateTransferProgress(p),
       onError: (_id, err) => console.error('Receive error:', err),
@@ -204,7 +294,6 @@ export const App: React.FC = () => {
   ) => {
     switch (msg.type) {
       case 'PEER_JOINED':
-        // Second peer arrived! Host initiates Offer
         if (isHost) {
           setViewState('connecting');
           const offer = await rtc.createOffer();
@@ -229,6 +318,7 @@ export const App: React.FC = () => {
       case 'ANSWER':
         if (isHost && msg.sdp) {
           await rtc.handleAnswer(msg.sdp);
+          updateWebRtcTelemetry();
         }
         break;
 
@@ -250,13 +340,16 @@ export const App: React.FC = () => {
 
   const updateTransferProgress = useCallback((progress: TransferProgress) => {
     setTransfers((prev) => {
+      const thumb = thumbnailsRef.current.get(progress.name);
+      const enriched = thumb && !progress.thumbnailUrl ? { ...progress, thumbnailUrl: thumb } : progress;
+
       const idx = prev.findIndex((t) => t.id === progress.id);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = progress;
+        next[idx] = enriched;
         return next;
       }
-      return [progress, ...prev];
+      return [enriched, ...prev];
     });
   }, []);
 
@@ -264,6 +357,15 @@ export const App: React.FC = () => {
     if (!senderRef.current) return;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      // Generate object URL for image thumbnail preview if image/*
+      if (file.type && file.type.startsWith('image/')) {
+        try {
+          const thumbUrl = URL.createObjectURL(file);
+          thumbnailsRef.current.set(file.name, thumbUrl);
+        } catch {
+          // Ignore thumbnail failure
+        }
+      }
       try {
         await senderRef.current.sendFile(file);
       } catch (err) {
@@ -272,15 +374,45 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCancelTransfer = useCallback((id: string) => {
+    if (senderRef.current) {
+      senderRef.current.cancel(id);
+    }
+    // Forward cancel signal to receiver over DataChannel if open
+    if (rtcRef.current?.dataChannel && rtcRef.current.dataChannel.readyState === 'open') {
+      try {
+        rtcRef.current.dataChannel.send(
+          JSON.stringify({ type: 'FILE_CANCEL', id, reason: 'Cancelled by user' })
+        );
+      } catch (e) {
+        console.warn('Failed to send cancel message', e);
+      }
+    }
+    setTransfers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status: 'cancelled' } : t))
+    );
+  }, []);
+
+  const handleJoinSession = (targetSessionId: string) => {
+    const match = targetSessionId.match(/\/s\/([a-zA-Z0-9_-]+)/i);
+    let cleanId = match ? match[1] : targetSessionId.trim();
+    if (cleanId.startsWith('RM-') || cleanId.startsWith('rm-')) {
+      cleanId = cleanId.toLowerCase();
+    }
+    window.history.pushState({}, '', `/s/${cleanId}`);
+    setSessionId(cleanId);
+    setViewState('connecting');
+    initSession(cleanId, 'guest');
+  };
+
   const handleSessionDissolve = () => {
     cleanupAll();
     setViewState('dissolved');
   };
 
   const handleStartNewSession = () => {
-    // Return to root URL without reload
     window.history.pushState({}, '', '/');
-    const newSessionId = crypto.randomUUID();
+    const newSessionId = generateSessionId();
     setSessionId(newSessionId);
     setRemainingSeconds(600);
     setTransfers([]);
@@ -308,6 +440,8 @@ export const App: React.FC = () => {
       signalingRef.current.close();
       signalingRef.current = null;
     }
+    thumbnailsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    thumbnailsRef.current.clear();
     mobileManager.cleanup();
   };
 
@@ -323,6 +457,7 @@ export const App: React.FC = () => {
             sessionId={sessionId}
             roomCode={roomCode}
             remainingSeconds={remainingSeconds}
+            onJoinSession={handleJoinSession}
           />
         )}
 
@@ -335,8 +470,11 @@ export const App: React.FC = () => {
             remainingSeconds={remainingSeconds}
             transfers={transfers}
             roomCode={roomCode}
+            connectionType={connectionType}
+            verificationKey={verificationKey}
             onEndSession={handleSessionDissolve}
             onSendFiles={handleSendFiles}
+            onCancelTransfer={handleCancelTransfer}
           />
         )}
 

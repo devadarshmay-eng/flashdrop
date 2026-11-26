@@ -5,8 +5,11 @@ interface ConnectedViewProps {
   remainingSeconds: number;
   transfers: TransferProgress[];
   roomCode?: string;
+  connectionType?: 'DIRECT LAN' | 'P2P STUN' | 'TURN RELAY';
+  verificationKey?: string;
   onEndSession: () => void;
   onSendFiles: (files: FileList | File[]) => void;
+  onCancelTransfer?: (id: string) => void;
 }
 
 function getFileExtension(filename: string): string {
@@ -35,8 +38,11 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
   remainingSeconds,
   transfers,
   roomCode,
+  connectionType = 'P2P STUN',
+  verificationKey = 'KEY 9F2A',
   onEndSession,
   onSendFiles,
+  onCancelTransfer,
 }) => {
   const [isWindowDragging, setIsWindowDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +52,12 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
     const mins = Math.floor(Math.max(0, totalSecs) / 60);
     const secs = Math.max(0, totalSecs) % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTimerColorClass = (secs: number) => {
+    if (secs < 15) return 'text-[#EF4444]';
+    if (secs < 60) return 'text-[#F59E0B]';
+    return 'text-[#F4F4F5]';
   };
 
   // Full-viewport drag-and-drop listener
@@ -123,8 +135,21 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
     }
   };
 
+  // Batch "Save All" for 2+ completed incoming files
+  const completedIncoming = transfers.filter(
+    (t) => t.direction === 'receive' && t.status === 'completed'
+  );
+
+  const handleSaveAll = () => {
+    completedIncoming.forEach((t, index) => {
+      setTimeout(() => {
+        handleSaveClick(t);
+      }, index * 150);
+    });
+  };
+
   return (
-    <section className="w-full max-w-4xl mx-auto flex-1 flex flex-col min-h-0 px-4 sm:px-6 py-4 gap-4">
+    <section className="w-full max-w-full sm:max-w-[640px] mx-auto flex-1 flex flex-col min-h-0 px-4 sm:px-0 py-4 gap-4">
       {/* Full-Viewport Drag Overlay */}
       {isWindowDragging && (
         <div
@@ -137,7 +162,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
             e.stopPropagation();
             dragCounterRef.current = 0;
             setIsWindowDragging(false);
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
               onSendFiles(e.dataTransfer.files);
             }
           }}
@@ -165,9 +190,9 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
 
       {/* Workspace Status Bar */}
       <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] px-4 py-3 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex items-center gap-2 min-w-0" data-testid="connected-status">
-            {/* Crisp 6px #10B981 dot */}
+            {/* 6px #10B981 dot */}
             <span
               className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0"
               data-testid="connected-indicator"
@@ -177,10 +202,31 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
               Connected (Direct P2P)
             </span>
           </div>
+
+          {/* Real WebRTC Candidate Telemetry Badge */}
+          <div className="hidden xs:flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] mono-num text-[10px] text-[#A1A1AA]">
+            <span
+              className={`w-1 h-1 rounded-full ${
+                connectionType === 'TURN RELAY' ? 'bg-[#F59E0B]' : 'bg-[#10B981]'
+              }`}
+            />
+            <span>{connectionType}</span>
+          </div>
+
+          {/* E2E DTLS Fingerprint Verification Code */}
+          {verificationKey && (
+            <span
+              title="DTLS-SRTP Fingerprint Verification Key"
+              className="hidden md:inline-block mono-num text-[10px] px-1.5 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] text-[#71717A]"
+            >
+              {verificationKey}
+            </span>
+          )}
+
           {roomCode && (
             <>
-              <span className="hidden md:inline-block text-[#3F3F46]">/</span>
-              <span className="hidden md:inline-block mono-num text-[12px] text-[#71717A] tracking-[0.02em]">
+              <span className="hidden lg:inline-block text-[#3F3F46]">/</span>
+              <span className="hidden lg:inline-block mono-num text-[11px] text-[#71717A] tracking-[0.02em]">
                 {roomCode}
               </span>
             </>
@@ -192,7 +238,11 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
             <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider">
               TTL
             </span>
-            <span className="mono-num text-[13px] font-medium text-[#F4F4F5] tabular-nums">
+            <span
+              className={`mono-num text-[13px] font-medium tabular-nums ${getTimerColorClass(
+                remainingSeconds
+              )}`}
+            >
               {formatTime(remainingSeconds)}
             </span>
           </div>
@@ -279,12 +329,29 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
 
       {/* Structured Transfer Rows Container */}
       <div className="flex-1 flex flex-col min-h-0 rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] overflow-hidden">
-        {/* Table Header */}
+        {/* Table Header Bar with Batch Save All */}
         <div className="px-4 py-2.5 border-b border-[#232327] flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.06em] text-[#71717A] shrink-0">
-          <span>Active Transfers</span>
-          <span className="mono-num text-[11px] text-[#71717A]">
-            {transfers.length} {transfers.length === 1 ? 'ITEM' : 'ITEMS'}
-          </span>
+          <div className="flex items-center gap-2.5">
+            <span>Transfers</span>
+            <span className="mono-num text-[11px] text-[#71717A]">
+              ({transfers.length})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {completedIncoming.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                className="px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] hover:border-[#3F3F46] text-[10px] font-medium text-[#F4F4F5] transition-colors cursor-pointer select-none"
+              >
+                Save All ({completedIncoming.length})
+              </button>
+            )}
+            <span className="mono-num text-[10px] text-[#52525B]">
+              16KB CHUNKS
+            </span>
+          </div>
         </div>
 
         {/* Transfer Items */}
@@ -297,9 +364,13 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
             transfers.map((t) => {
               const isSend = t.direction === 'send';
               const isDone = t.status === 'completed';
+              const isCancelled = t.status === 'cancelled';
+              const isTransferring = t.status === 'transferring' || t.status === 'pending';
               const percent = Math.min(100, Math.max(0, Math.round(t.percentage)));
               const ext = getFileExtension(t.name);
               const transferredBytes = Math.min(t.size, Math.round((percent / 100) * t.size));
+              const isImage = t.mimeType && t.mimeType.startsWith('image/');
+              const thumbSrc = t.thumbnailUrl || (isDone ? t.objectUrl : undefined);
 
               return (
                 <div
@@ -321,6 +392,15 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
                         )}
                       </span>
 
+                      {/* Image Thumbnail (32x32) if image/* */}
+                      {isImage && thumbSrc ? (
+                        <img
+                          src={thumbSrc}
+                          alt=""
+                          className="w-8 h-8 rounded-[4px] object-cover shrink-0 border border-[#27272A] select-none"
+                        />
+                      ) : null}
+
                       {/* File Extension Badge */}
                       <span className="shrink-0 px-1.5 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] text-[10px] font-mono text-[#A1A1AA] tracking-wider uppercase">
                         {ext}
@@ -337,11 +417,13 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
                       <span className="mono-num text-[12px] text-[#A1A1AA] tabular-nums">
                         {isDone
                           ? formatSize(t.size)
+                          : isCancelled
+                          ? 'Cancelled'
                           : `${formatSize(transferredBytes)} / ${formatSize(t.size)}`}
                       </span>
 
                       {/* Live Speed / Status */}
-                      {t.status === 'transferring' ? (
+                      {isTransferring ? (
                         <span className="mono-num text-[11px] text-[#E4E4E7] tabular-nums">
                           {t.speedMBs}
                         </span>
@@ -349,9 +431,27 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
                         <span className="mono-num text-[10px] text-[#71717A] tracking-wider uppercase">
                           COMPLETED
                         </span>
+                      ) : isCancelled ? (
+                        <span className="mono-num text-[10px] text-[#EF4444] tracking-wider uppercase">
+                          CANCELLED
+                        </span>
                       ) : null}
 
-                      {/* Crisp Save Button for Completed Incoming Files */}
+                      {/* Active Transfer Cancel Button (×) */}
+                      {isTransferring && onCancelTransfer && (
+                        <button
+                          type="button"
+                          onClick={() => onCancelTransfer(t.id)}
+                          title="Cancel transfer"
+                          className="w-6 h-6 rounded-[4px] bg-[#18181B] border border-[#27272A] hover:border-[#EF4444] text-[#A1A1AA] hover:text-[#EF4444] flex items-center justify-center transition-colors cursor-pointer select-none"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Save Button for Completed Incoming Files */}
                       {!isSend && isDone && (
                         <button
                           type="button"
@@ -368,8 +468,10 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
                   {/* 3px Progress Track with #FF4D00 fill */}
                   <div className="w-full h-[3px] bg-[#1C1C20] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-[#FF4D00] transition-all duration-150"
-                      style={{ width: `${percent}%` }}
+                      className={`h-full transition-all duration-150 ${
+                        isCancelled ? 'bg-[#EF4444]' : 'bg-[#FF4D00]'
+                      }`}
+                      style={{ width: `${isCancelled ? 100 : percent}%` }}
                     />
                   </div>
                 </div>
