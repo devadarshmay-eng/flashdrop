@@ -7,6 +7,7 @@ interface WaitingViewProps {
   roomCode: string;
   remainingSeconds: number;
   onJoinSession?: (sessionId: string) => void;
+  onStartHosting?: () => void;
 }
 
 export const WaitingView: React.FC<WaitingViewProps> = ({
@@ -14,6 +15,7 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
   roomCode,
   remainingSeconds,
   onJoinSession,
+  onStartHosting,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
@@ -385,7 +387,10 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
           <div className="px-5 py-3 border-t border-[#232327] bg-[#0E0E10] flex items-center justify-center">
             <button
               type="button"
-              onClick={() => setShowQrMode(true)}
+              onClick={() => {
+                setShowQrMode(true);
+                if (onStartHosting) onStartHosting();
+              }}
               className="text-[12px] text-[#A1A1AA] hover:text-[#F4F4F5] transition-colors cursor-pointer select-none"
             >
               Show QR code on this device instead →

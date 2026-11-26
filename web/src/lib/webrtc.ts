@@ -183,11 +183,24 @@ export class PeerConnectionManager {
 
   public close(): void {
     if (this.dataChannel) {
-      this.dataChannel.close();
+      this.dataChannel.onopen = null;
+      this.dataChannel.onclose = null;
+      this.dataChannel.onerror = null;
+      this.dataChannel.onmessage = null;
+      try {
+        this.dataChannel.close();
+      } catch {}
       this.dataChannel = null;
     }
     if (this.pc) {
-      this.pc.close();
+      this.pc.onconnectionstatechange = null;
+      this.pc.oniceconnectionstatechange = null;
+      this.pc.onsignalingstatechange = null;
+      this.pc.onicecandidate = null;
+      this.pc.ondatachannel = null;
+      try {
+        this.pc.close();
+      } catch {}
       this.pc = null;
     }
     this.pendingCandidates = [];

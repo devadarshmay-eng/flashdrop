@@ -93,20 +93,27 @@ export const App: React.FC = () => {
     const match = path.match(/^\/s\/([a-zA-Z0-9_-]+)/);
 
     let activeSessionId = '';
-    let role: SessionRole = 'host';
 
     if (match && match[1]) {
       activeSessionId = match[1];
-      role = 'guest';
+      setSessionId(activeSessionId);
       setViewState('connecting');
+      initSession(activeSessionId, 'guest');
     } else {
       activeSessionId = generateSessionId();
-      role = 'host';
+      setSessionId(activeSessionId);
       setViewState('waiting');
-    }
 
-    setSessionId(activeSessionId);
-    initSession(activeSessionId, role);
+      const isMobile =
+        typeof window !== 'undefined' &&
+        (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 640);
+
+      // On mobile root (/), user sees Pair Device panel (Scan / Enter Code) first.
+      // We only initialize the host WebSocket if on desktop or if user chooses to host!
+      if (!isMobile) {
+        initSession(activeSessionId, 'host');
+      }
+    }
 
     return () => {
       cleanupAll();
@@ -221,7 +228,7 @@ export const App: React.FC = () => {
             setViewState('connected');
             updateWebRtcTelemetry();
             setTimeout(updateWebRtcTelemetry, 1200);
-          } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+          } else if (state === 'failed') {
             handleSessionDissolve();
           }
         },
@@ -458,6 +465,7 @@ export const App: React.FC = () => {
             roomCode={roomCode}
             remainingSeconds={remainingSeconds}
             onJoinSession={handleJoinSession}
+            onStartHosting={() => initSession(sessionId, 'host')}
           />
         )}
 
