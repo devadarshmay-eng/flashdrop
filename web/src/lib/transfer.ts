@@ -213,9 +213,9 @@ export class FileTransferReceiver {
 
   public setupDataChannelHandler(): void {
     this.dc.binaryType = 'arraybuffer';
-    this.dc.onmessage = (event) => {
+    this.dc.addEventListener('message', (event: MessageEvent) => {
       this.handleIncomingData(event.data);
-    };
+    });
   }
 
   private handleIncomingData(data: ArrayBuffer | string): void {

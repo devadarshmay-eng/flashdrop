@@ -52,9 +52,11 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
               <img
                 src={qrDataUrl}
                 alt={`Scan to connect to ${roomCode}`}
+                data-session-url={sessionUrl}
+                data-session-id={sessionId}
                 width={208}
                 height={208}
-                className="w-[188px] h-[188px] sm:w-[208px] sm:h-[208px] block"
+                className="w-[188px] h-[188px] sm:w-[208px] sm:h-[208px] block qr-code-image"
               />
             ) : (
               <div className="w-[188px] h-[188px] sm:w-[208px] sm:h-[208px] bg-[#E4E4E7] animate-pulse" />

@@ -40,6 +40,7 @@ export const DissolvedView: React.FC<DissolvedViewProps> = ({
 
         <button
           type="button"
+          data-testid="start-new-session-btn"
           onClick={onStartNewSession}
           className="mt-5 w-full py-2.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[13px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors duration-150 cursor-pointer"
         >

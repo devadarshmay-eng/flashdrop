@@ -78,8 +78,8 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
       {/* Workspace Status Bar */}
       <div className="flex items-center justify-between gap-3 border-b border-[#26262A] pb-3 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0" aria-hidden="true"></span>
+          <div className="flex items-center gap-2 min-w-0" data-testid="connected-status">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0" data-testid="connected-indicator" aria-hidden="true"></span>
             <span className="text-[13px] font-medium text-[#F4F4F5] truncate">Connected (Direct P2P)</span>
           </div>
           {roomCode && (
@@ -96,6 +96,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
           </span>
           <button
             type="button"
+            data-testid="end-session-btn"
             onClick={onEndSession}
             className="px-2.5 py-1.5 rounded-[6px] bg-[#141416] border border-[#26262A] text-[12px] font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:border-[#3F3F46] transition-colors duration-150 cursor-pointer"
           >
@@ -108,6 +109,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
       <input
         ref={fileInputRef}
         type="file"
+        data-testid="file-input"
         multiple
         onChange={handleFileInputChange}
         className="hidden"
@@ -235,6 +237,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
                       {!isSend && isDone && (
                         <button
                           type="button"
+                          data-testid="save-btn"
                           onClick={() => handleSaveClick(t)}
                           className="px-2.5 py-1 rounded-[4px] bg-[#0A0A0B] border border-[#26262A] text-[12px] font-medium text-[#F4F4F5] hover:border-[#3F3F46] hover:bg-[#141416] transition-colors duration-150 cursor-pointer"
                         >
