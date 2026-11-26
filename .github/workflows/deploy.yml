@@ -1,0 +1,117 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Verify & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker Dependencies
+        run: |
+          cd worker
+          npm install
+
+      - name: Verify Worker (tsc & vitest)
+        run: |
+          cd worker
+          npx tsc --noEmit
+          npm test
+
+      - name: Install Web Dependencies
+        run: |
+          cd web
+          npm install
+
+      - name: Verify Web (tsc & vitest)
+        run: |
+          cd web
+          npx tsc --noEmit
+          npm test
+
+      - name: Build Web Production Bundle
+        env:
+          VITE_WS_URL: wss://flashdrop-signaling.wick47501.workers.dev
+        run: |
+          cd web
+          npm run build
+
+  deploy-production:
+    name: Deploy Production
+    needs: [verify]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy Worker to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'worker'
+          command: deploy
+
+      - name: Build Web for Production
+        env:
+          VITE_WS_URL: wss://flashdrop-signaling.wick47501.workers.dev
+        run: |
+          cd web
+          npm install
+          npm run build
+
+      - name: Deploy Web to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'web'
+          command: pages deploy dist --project-name=flashdrop --branch=main
+
+  deploy-preview:
+    name: Deploy Preview
+    needs: [verify]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build Web for Preview
+        env:
+          VITE_WS_URL: wss://flashdrop-signaling.wick47501.workers.dev
+        run: |
+          cd web
+          npm install
+          npm run build
+
+      - name: Deploy Web Preview to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'web'
+          command: pages deploy dist --project-name=flashdrop --branch=${{ github.head_ref }}

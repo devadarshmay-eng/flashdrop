@@ -1,0 +1,13 @@
+name = "flashdrop-signaling"
+main = "src/index.ts"
+compatibility_date = "2026-11-20"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [
+  { name = "TRANSFER_ROOM", class_name = "TransferRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TransferRoom"]
