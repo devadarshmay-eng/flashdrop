@@ -53,7 +53,8 @@ export class SignalingClient {
     this.cleanupSocket();
 
     const normalizedUrl = this.url.replace(/\/+$/, '');
-    const wsUrl = `${normalizedUrl}/ws/${this.sessionId}`;
+    const roleQuery = this.role ? `?role=${encodeURIComponent(this.role)}` : '';
+    const wsUrl = `${normalizedUrl}/ws/${this.sessionId}${roleQuery}`;
 
     try {
       this.ws = new WebSocket(wsUrl);
@@ -88,10 +89,10 @@ export class SignalingClient {
           return;
         }
 
-        if (data.role && !this.role) {
-          this.role = data.role;
+        if ((data.type === 'ROOM_JOINED' || data.role) && data.role) {
+          this.role = data.role as SessionRole;
           if (this.onRoleAssignedCb) {
-            this.onRoleAssignedCb(data.role);
+            this.onRoleAssignedCb(data.role as SessionRole);
           }
         }
 

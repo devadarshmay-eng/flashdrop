@@ -15,7 +15,23 @@ export class TransferRoom extends DurableObject<Env> {
       return new Response("Expected WebSocket Upgrade", { status: 426 });
     }
 
-    const existingSockets = this.ctx.getWebSockets();
+    const url = new URL(request.url);
+    const requestedRole = url.searchParams.get("role") as PeerRole | null;
+
+    let existingSockets = this.ctx.getWebSockets();
+
+    // If a reconnecting socket arrives with an explicit role that already exists, close stale socket
+    if (requestedRole) {
+      for (const s of existingSockets) {
+        try {
+          const att = s.deserializeAttachment() as WebSocketAttachment | null;
+          if (att && att.role === requestedRole) {
+            s.close(1000, "Replaced by reconnecting peer");
+          }
+        } catch {}
+      }
+      existingSockets = this.ctx.getWebSockets();
+    }
 
     // Enforce strict 2-peer limit (host = 1st peer, guest = 2nd peer)
     // Reject any 3rd socket attempt immediately with close code 4003 ('Room Full')
@@ -30,8 +46,14 @@ export class TransferRoom extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
-    const isHost = existingSockets.length === 0;
-    const role: PeerRole = isHost ? "host" : "guest";
+    // Determine role: use explicit requestedRole if valid, else infer from socket count
+    let role: PeerRole;
+    if (requestedRole === "host" || requestedRole === "guest") {
+      role = requestedRole;
+    } else {
+      role = existingSockets.length === 0 ? "host" : "guest";
+    }
+    const isHost = role === "host";
 
     const attachment: WebSocketAttachment = {
       role,
@@ -56,14 +78,24 @@ export class TransferRoom extends DurableObject<Env> {
       console.error("Failed to send ROOM_JOINED message:", err);
     }
 
-    // When 2nd peer (guest) joins, immediately broadcast { type: "PEER_JOINED" } to host
-    if (!isHost) {
-      for (const socket of existingSockets) {
-        try {
-          socket.send(JSON.stringify({ type: "PEER_JOINED" }));
-        } catch (err) {
-          console.error("Failed to notify host of PEER_JOINED:", err);
-        }
+    // When both host and guest are connected, immediately send PEER_JOINED to the host
+    const allSockets = this.ctx.getWebSockets();
+    let hostWs: WebSocket | null = null;
+    let guestWs: WebSocket | null = null;
+
+    for (const ws of allSockets) {
+      try {
+        const att = ws.deserializeAttachment() as WebSocketAttachment | null;
+        if (att?.role === "host") hostWs = ws;
+        if (att?.role === "guest") guestWs = ws;
+      } catch {}
+    }
+
+    if (hostWs && guestWs) {
+      try {
+        hostWs.send(JSON.stringify({ type: "PEER_JOINED" }));
+      } catch (err) {
+        console.error("Failed to notify host of PEER_JOINED:", err);
       }
     }
 

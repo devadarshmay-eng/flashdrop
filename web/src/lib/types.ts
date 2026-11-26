@@ -2,6 +2,7 @@ export type SessionRole = 'host' | 'guest';
 
 export interface SignalingMessage {
   type:
+    | 'ROOM_JOINED'
     | 'PEER_JOINED'
     | 'OFFER'
     | 'ANSWER'

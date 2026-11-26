@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ConnectingViewProps {
   roomCode?: string;
+  onCancel?: () => void;
 }
 
-export const ConnectingView: React.FC<ConnectingViewProps> = ({ roomCode }) => {
+export const ConnectingView: React.FC<ConnectingViewProps> = ({ roomCode, onCancel }) => {
+  const [secondsElapsed, setSecondsElapsed] = useState<number>(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSecondsElapsed((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <section className="flex-1 flex flex-col items-center justify-center min-h-0 px-4 py-8">
       {/* Centered max-w-[400px] #111113 Instrument Panel */}
@@ -29,13 +39,31 @@ export const ConnectingView: React.FC<ConnectingViewProps> = ({ roomCode }) => {
         </h2>
 
         <p className="mt-2 mono-num text-[11px] text-[#71717A] tracking-wider uppercase">
-          DTLS-SRTP • ICE CANDIDATE EXCHANGE
+          {secondsElapsed >= 6
+            ? 'Negotiating ICE candidates (STUN/TURN relay)…'
+            : 'DTLS-SRTP • ICE CANDIDATE EXCHANGE'}
         </p>
+
+        {secondsElapsed >= 12 && (
+          <p className="mt-3 text-[11px] text-[#A1A1AA] max-w-[280px] leading-relaxed">
+            Traversing NAT. Make sure the host tab remains open on the other device.
+          </p>
+        )}
 
         {roomCode && (
           <div className="mt-4 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] mono-num text-[11px] text-[#A1A1AA]">
             {roomCode}
           </div>
+        )}
+
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="mt-6 px-4 py-1.5 rounded-[6px] bg-[#18181B] border border-[#27272A] hover:border-[#3F3F46] text-[11px] font-medium text-[#A1A1AA] hover:text-[#F4F4F5] transition-colors cursor-pointer select-none"
+          >
+            Cancel & Return
+          </button>
         )}
       </div>
     </section>

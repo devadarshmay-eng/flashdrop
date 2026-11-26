@@ -19,10 +19,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
-  const [isMobile] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 640;
-  });
   const [showQrMode, setShowQrMode] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
     const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 640;
@@ -159,8 +155,17 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
       return;
     }
 
-    // Check if 8 alphanumeric chars
+    // Strip everything except alphanumeric
     const rawClean = val.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (rawClean.startsWith('rm') && rawClean.length === 10) {
+      const normalized = `rm-${rawClean.slice(2, 6)}-${rawClean.slice(6, 10)}`;
+      if (onJoinSession) {
+        onJoinSession(normalized);
+      }
+      return;
+    }
+
+    // Check if 8 alphanumeric chars
     if (rawClean.length === 8) {
       const normalized = `rm-${rawClean.slice(0, 4)}-${rawClean.slice(4, 8)}`;
       if (onJoinSession) {
@@ -488,15 +493,13 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {isMobile && (
-                <button
-                  type="button"
-                  onClick={() => setShowQrMode(false)}
-                  className="text-[11px] text-[#71717A] hover:text-[#D4D4D8] underline cursor-pointer mr-1"
-                >
-                  Enter code
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowQrMode(false)}
+                className="text-[11px] text-[#71717A] hover:text-[#D4D4D8] cursor-pointer mr-1 transition-colors select-none"
+              >
+                Join with code →
+              </button>
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] text-[10px] font-mono uppercase tracking-[0.05em] text-[#A1A1AA]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#FF4D00] animate-pulse"></span>
                 <span>AWAITING PEER</span>

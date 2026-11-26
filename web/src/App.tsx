@@ -95,7 +95,7 @@ export const App: React.FC = () => {
     let activeSessionId = '';
 
     if (match && match[1]) {
-      activeSessionId = match[1];
+      activeSessionId = match[1].toLowerCase();
       setSessionId(activeSessionId);
       setViewState('connecting');
       initSession(activeSessionId, 'guest');
@@ -210,7 +210,7 @@ export const App: React.FC = () => {
     cleanupAll();
 
     const wsUrl = getWsUrl();
-    const isHost = role === 'host';
+    let isHost = role === 'host';
 
     // 1. Setup PeerConnectionManager
     const rtc = new PeerConnectionManager(
@@ -248,6 +248,9 @@ export const App: React.FC = () => {
       url: wsUrl,
       sessionId: id,
       role,
+      onRoleAssigned: (assignedRole) => {
+        isHost = assignedRole === 'host';
+      },
       onOpen: () => {},
       onMessage: async (msg: SignalingMessage) => {
         await handleSignalingMessage(msg, rtc, isHost);
@@ -402,14 +405,32 @@ export const App: React.FC = () => {
 
   const handleJoinSession = (targetSessionId: string) => {
     const match = targetSessionId.match(/\/s\/([a-zA-Z0-9_-]+)/i);
-    let cleanId = match ? match[1] : targetSessionId.trim();
-    if (cleanId.startsWith('RM-') || cleanId.startsWith('rm-')) {
-      cleanId = cleanId.toLowerCase();
+    let cleanId = (match ? match[1] : targetSessionId.trim()).toLowerCase();
+    const rawClean = cleanId.replace(/[^a-z0-9]/g, '');
+    if (rawClean.startsWith('rm') && rawClean.length === 10) {
+      cleanId = `rm-${rawClean.slice(2, 6)}-${rawClean.slice(6, 10)}`;
+    } else if (rawClean.length === 8) {
+      cleanId = `rm-${rawClean.slice(0, 4)}-${rawClean.slice(4, 8)}`;
     }
     window.history.pushState({}, '', `/s/${cleanId}`);
     setSessionId(cleanId);
     setViewState('connecting');
     initSession(cleanId, 'guest');
+  };
+
+  const handleCancelConnecting = () => {
+    cleanupAll();
+    window.history.pushState({}, '', '/');
+    const newSessionId = generateSessionId();
+    setSessionId(newSessionId);
+    setRemainingSeconds(600);
+    setViewState('waiting');
+    const isMobile =
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 640);
+    if (!isMobile) {
+      initSession(newSessionId, 'host');
+    }
   };
 
   const handleSessionDissolve = () => {
@@ -470,7 +491,7 @@ export const App: React.FC = () => {
         )}
 
         {viewState === 'connecting' && (
-          <ConnectingView roomCode={roomCode} />
+          <ConnectingView roomCode={roomCode} onCancel={handleCancelConnecting} />
         )}
 
         {viewState === 'connected' && (

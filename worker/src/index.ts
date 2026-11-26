@@ -82,8 +82,9 @@ export default {
         );
       }
 
-      // Forward request to Durable Object
-      const id = env.TRANSFER_ROOM.idFromName(sessionId);
+      // Forward request to Durable Object (normalize session ID to lowercase)
+      const normalizedSessionId = sessionId.toLowerCase();
+      const id = env.TRANSFER_ROOM.idFromName(normalizedSessionId);
       const roomStub = env.TRANSFER_ROOM.get(id);
       return roomStub.fetch(request);
     }
