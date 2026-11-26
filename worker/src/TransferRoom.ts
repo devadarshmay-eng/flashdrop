@@ -15,23 +15,7 @@ export class TransferRoom extends DurableObject<Env> {
       return new Response("Expected WebSocket Upgrade", { status: 426 });
     }
 
-    const url = new URL(request.url);
-    const requestedRole = url.searchParams.get("role") as PeerRole | null;
-
-    let existingSockets = this.ctx.getWebSockets();
-
-    // If a reconnecting socket arrives with an explicit role that already exists, close stale socket
-    if (requestedRole) {
-      for (const s of existingSockets) {
-        try {
-          const att = s.deserializeAttachment() as WebSocketAttachment | null;
-          if (att && att.role === requestedRole) {
-            s.close(1000, "Replaced by reconnecting peer");
-          }
-        } catch {}
-      }
-      existingSockets = this.ctx.getWebSockets();
-    }
+    const existingSockets = this.ctx.getWebSockets();
 
     // Enforce strict 2-peer limit (host = 1st peer, guest = 2nd peer)
     // Reject any 3rd socket attempt immediately with close code 4003 ('Room Full')
@@ -42,6 +26,9 @@ export class TransferRoom extends DurableObject<Env> {
       server.close(4003, "Room Full");
       return new Response(null, { status: 101, webSocket: client });
     }
+
+    const url = new URL(request.url);
+    const requestedRole = url.searchParams.get("role") as PeerRole | null;
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
