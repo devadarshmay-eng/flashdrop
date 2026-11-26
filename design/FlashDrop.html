@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FlashDrop</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%230A0A0B'/%3E%3Cpath d='M13 3 5 13h6l-1 8 8-10h-6z' fill='none' stroke='%23FF4D00' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+  :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  html, body { height: 100%; margin: 0; background: #0A0A0B; color: #E4E4E7; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .card { background: #141416; border: 1px solid #26262A; border-radius: 8px; }
+  .hair { border-color: #26262A; }
+  .view { display: none; }
+  .view.on { display: flex; }
+  .bracket { position: absolute; width: 18px; height: 18px; border: 0 solid #52525B; }
+  .tl { top: 0; left: 0; border-top-width: 1.5px; border-left-width: 1.5px; }
+  .tr { top: 0; right: 0; border-top-width: 1.5px; border-right-width: 1.5px; }
+  .bl { bottom: 0; left: 0; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+  .br { bottom: 0; right: 0; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+  .btn { border-radius: 6px; font-size: 13px; font-weight: 500; padding: 8px 14px; border: 1px solid #26262A; background: transparent; color: #E4E4E7; cursor: pointer; }
+  .btn-primary { background: #FF4D00; border-color: #FF4D00; color: #0A0A0B; font-weight: 600; }
+  .btn:focus-visible, .seg:focus-visible, .drop:focus-visible { outline: 1.5px solid #A1A1AA; outline-offset: 2px; }
+  .seg { background: none; border: 0; color: #71717A; font-size: 11px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  .seg.act { color: #E4E4E7; background: #1C1C1F; }
+  .spin { animation: spin 0.9s linear infinite; transform-origin: 12px 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .drop { border: 1px dashed #3A3A40; border-radius: 8px; }
+  .drop.over { border-color: #A1A1AA; background: #141416; }
+  .bar { height: 3px; background: #26262A; border-radius: 2px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: #FF4D00; }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+</style>
+</head>
+<body>
+<div class="flex flex-col" style="min-height:100dvh">
+
+  <!-- Top bar -->
+  <header class="flex items-center justify-between px-4 sm:px-6 h-14 border-b hair shrink-0">
+    <div class="flex items-center gap-2">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E4E4E7" stroke-width="1.6" stroke-linejoin="miter" aria-hidden="true"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></svg>
+      <span class="text-[15px] font-semibold tracking-tight">FlashDrop</span>
+    </div>
+    <div id="pill" class="mono text-[11px] tracking-wide text-zinc-400 border hair rounded-md px-2.5 py-1">EPHEMERAL • P2P ENCRYPTED</div>
+  </header>
+
+  <main class="flex-1 flex flex-col min-h-0">
+
+    <!-- 1. Waiting -->
+    <section id="v-waiting" class="view on flex-1 flex-col items-center justify-center px-4 py-8 gap-6">
+      <div class="relative p-5">
+        <span class="bracket tl"></span><span class="bracket tr"></span><span class="bracket bl"></span><span class="bracket br"></span>
+        <div class="p-3 rounded-md" style="background:#F4F4F5">
+          <svg id="qr" width="208" height="208" viewBox="0 0 29 29" shape-rendering="crispEdges" role="img" aria-label="Session QR code"></svg>
+        </div>
+      </div>
+      <div class="flex flex-col items-center gap-2">
+        <div class="mono text-4xl font-medium tracking-tight" id="t-waiting">10:00</div>
+        <div class="mono text-[11px] text-zinc-500 tracking-wider">ROOM 7KQ-4MX-92D</div>
+      </div>
+      <p class="text-sm text-zinc-400 text-center max-w-xs">Scan with your phone camera to open a direct channel to this tab.</p>
+    </section>
+
+    <!-- 2. Connecting -->
+    <section id="v-connecting" class="view flex-1 flex-col items-center justify-center gap-4 px-4">
+      <svg class="spin" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#71717A" stroke-width="1.6" aria-hidden="true"><path d="M12 3a9 9 0 0 1 9 9"/></svg>
+      <div class="text-sm text-zinc-300">Establishing P2P Tunnel…</div>
+    </section>
+
+    <!-- 3. Connected -->
+    <section id="v-connected" class="view flex-1 flex-col min-h-0 p-4 sm:p-6 gap-4">
+      <div class="flex items-center justify-between gap-3 text-[13px]">
+        <div class="flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full" style="background:#10B981"></span>
+          <span class="text-zinc-200">Connected (Direct P2P)</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <span class="mono text-zinc-300" id="t-connected">10:00</span>
+          <button class="text-zinc-500 text-[13px] bg-transparent border-0 cursor-pointer" id="end">End Session</button>
+        </div>
+      </div>
+
+      <!-- Drop zone -->
+      <div id="drop" class="drop flex-1 min-h-[168px] flex flex-col items-center justify-center gap-3 text-center p-6" tabindex="-1">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#71717A" stroke-width="1.6" stroke-linecap="square" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+        <div class="hidden sm:block text-sm text-zinc-400">Drop files anywhere in this area</div>
+        <button id="pick" class="btn btn-primary w-full sm:w-auto py-4 sm:py-2 text-[15px] sm:text-[13px]">Select files</button>
+        <input id="file" type="file" multiple class="hidden">
+      </div>
+
+      <!-- Transfer list -->
+      <div class="card overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b hair text-[11px] uppercase tracking-wider text-zinc-500">
+          <span>Transfers</span><span class="mono normal-case" id="count">3</span>
+        </div>
+        <ul id="list" class="max-h-[34dvh] overflow-y-auto"></ul>
+      </div>
+    </section>
+
+    <!-- 4. Expired -->
+    <section id="v-expired" class="view flex-1 flex-col items-center justify-center px-4">
+      <div class="card p-6 max-w-sm w-full flex flex-col gap-4">
+        <div>
+          <h1 class="text-base font-semibold text-zinc-100">Session Dissolved</h1>
+          <p class="text-sm text-zinc-400 mt-1">All temporary keys and links have been wiped.</p>
+        </div>
+        <button id="restart" class="btn btn-primary w-full py-2.5">Start New Session</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shrink-0 border-t hair px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+    <p class="text-xs text-zinc-500 text-center">No servers store your files. Session dies when this tab closes.</p>
+    <div class="flex items-center gap-1" role="group" aria-label="Preview state">
+      <span class="text-[11px] text-zinc-600 mr-1">View</span>
+      <button class="seg act" data-s="waiting">Waiting</button>
+      <button class="seg" data-s="connecting">Connecting</button>
+      <button class="seg" data-s="connected">Connected</button>
+      <button class="seg" data-s="expired">Expired</button>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var SESSION = 600, left = SESSION, state = 'waiting', tick = null, conTimer = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // QR mock (deterministic matrix with finder patterns)
+  (function buildQR() {
+    var n = 29, seed = 7391, g = [], i, j;
+    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    for (i = 0; i < n; i++) { g[i] = []; for (j = 0; j < n; j++) g[i][j] = rnd() > 0.52; }
+    function finder(r, c) {
+      for (var y = -1; y <= 7; y++) for (var x = -1; x <= 7; x++) {
+        var yy = r + y, xx = c + x; if (yy < 0 || xx < 0 || yy >= n || xx >= n) continue;
+        var on = (y >= 0 && y <= 6 && x >= 0 && x <= 6) && (y === 0 || y === 6 || x === 0 || x === 6 || (y >= 2 && y <= 4 && x >= 2 && x <= 4));
+        g[yy][xx] = on;
+      }
+    }
+    finder(0, 0); finder(0, n - 7); finder(n - 7, 0);
+    for (i = 8; i < n - 8; i++) { g[6][i] = i % 2 === 0; g[i][6] = i % 2 === 0; }
+    var s = '<rect width="29" height="29" fill="#F4F4F5"/>';
+    for (i = 0; i < n; i++) for (j = 0; j < n; j++) if (g[i][j]) s += '<rect x="' + j + '" y="' + i + '" width="1" height="1" fill="#0A0A0B"/>';
+    $('qr').innerHTML = s;
+  })();
+
+  function fmt(t) { var m = Math.floor(t / 60), s = t % 60; return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s; }
+  function paintTimer() { $('t-waiting').textContent = fmt(left); $('t-connected').textContent = fmt(left); }
+
+  function startClock() {
+    clearInterval(tick);
+    tick = setInterval(function () {
+      if (state === 'expired') return;
+      left--; paintTimer();
+      if (left <= 0) show('expired');
+    }, 1000);
+  }
+
+  // Transfers
+  var transfers = [
+    { name: 'q3-site-survey.zip', size: 482.6, dir: 'up', pct: 64, speed: 38.2 },
+    { name: 'IMG_4821.HEIC', size: 3.4, dir: 'down', pct: 100, speed: 0 },
+    { name: 'pitch-deck-v7.pdf', size: 18.9, dir: 'down', pct: 27, speed: 11.4 }
+  ];
+  var ARROW = {
+    up: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A1A1AA" stroke-width="1.6" stroke-linecap="square" aria-label="Upload"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+    down: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A1A1AA" stroke-width="1.6" stroke-linecap="square" aria-label="Download"><path d="M12 5v14M6 13l6 6 6-6"/></svg>'
+  };
+  var SAVE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>';
+  function size(mb) { return mb >= 1000 ? (mb / 1024).toFixed(2) + ' GB' : mb.toFixed(1) + ' MB'; }
+  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function render() {
+    $('count').textContent = transfers.length;
+    $('list').innerHTML = transfers.map(function (t, i) {
+      var done = t.pct >= 100;
+      var right = done
+        ? '<button class="btn flex items-center gap-1.5 !py-1 !px-2.5 text-xs" data-save="' + i + '">' + SAVE + 'Save</button>'
+        : '<span class="mono text-xs text-zinc-300 w-20 text-right">' + t.speed.toFixed(1) + ' MB/s</span>';
+      return '<li class="flex items-center gap-3 px-4 py-2.5 border-b hair last:border-b-0">' +
+        ARROW[t.dir] +
+        '<div class="min-w-0 flex-1 sm:flex-none sm:w-56"><div class="text-[13px] text-zinc-200 truncate">' + esc(t.name) + '</div>' +
+        '<div class="mono text-[11px] text-zinc-500">' + size(t.size) + (done ? '' : ' · ' + Math.floor(t.pct) + '%') + '</div></div>' +
+        '<div class="bar hidden sm:block flex-1"><i style="width:' + Math.min(100, t.pct) + '%"></i></div>' +
+        '<div class="shrink-0 flex justify-end sm:w-24">' + right + '</div>' +
+        '</li>' +
+        '<li class="sm:hidden px-4 pb-2.5 -mt-1 border-b hair last:border-b-0" aria-hidden="true"><div class="bar"><i style="width:' + Math.min(100, t.pct) + '%"></i></div></li>';
+    }).join('');
+  }
+
+  setInterval(function () {
+    if (state !== 'connected') return;
+    var changed = false;
+    transfers.forEach(function (t) {
+      if (t.pct < 100) {
+        t.pct = Math.min(100, t.pct + (t.speed / t.size) * 100 * 0.5);
+        t.speed = Math.max(2, t.speed + (Math.random() - 0.5) * 3);
+        changed = true;
+      }
+    });
+    if (changed) render();
+  }, 500);
+
+  $('list').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-save]'); if (!b) return;
+    var t = transfers[+b.getAttribute('data-save')];
+    var blob = new Blob(['FlashDrop placeholder for ' + t.name]);
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = t.name + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  function addFiles(files) {
+    Array.prototype.forEach.call(files, function (f) {
+      var mb = Math.max(0.1, f.size / 1048576);
+      transfers.unshift({ name: f.name, size: mb, dir: 'up', pct: 0, speed: 20 + Math.random() * 20 });
+    });
+    render();
+  }
+  $('pick').addEventListener('click', function () { $('file').click(); });
+  $('file').addEventListener('change', function (e) { addFiles(e.target.files); e.target.value = ''; });
+  var dz = $('drop');
+  ['dragenter', 'dragover'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('over'); }); });
+  dz.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+
+  // State machine
+  function show(s) {
+    clearTimeout(conTimer);
+    state = s;
+    ['waiting', 'connecting', 'connected', 'expired'].forEach(function (k) {
+      $('v-' + k).classList.toggle('on', k === s);
+    });
+    document.querySelectorAll('.seg').forEach(function (b) { b.classList.toggle('act', b.getAttribute('data-s') === s); });
+    $('pill').style.visibility = s === 'expired' ? 'hidden' : 'visible';
+    if (s === 'connecting') conTimer = setTimeout(function () { show('connected'); }, 1800);
+    if (s === 'connected') render();
+    if (s === 'expired') { left = 0; paintTimer(); }
+    if (s !== 'expired' && left <= 0) { left = SESSION; paintTimer(); }
+  }
+
+  document.querySelectorAll('.seg').forEach(function (b) {
+    b.addEventListener('click', function () { show(b.getAttribute('data-s')); });
+  });
+  $('end').addEventListener('click', function () { show('expired'); });
+  $('restart').addEventListener('click', function () { left = SESSION; paintTimer(); show('waiting'); });
+
+  paintTimer(); render(); startClock();
+})();
+</script>
+</body>
+</html>

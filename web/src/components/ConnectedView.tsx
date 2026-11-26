@@ -4,6 +4,7 @@ import { TransferProgress, triggerDownload } from '../lib';
 interface ConnectedViewProps {
   remainingSeconds: number;
   transfers: TransferProgress[];
+  roomCode?: string;
   onEndSession: () => void;
   onSendFiles: (files: FileList | File[]) => void;
 }
@@ -11,6 +12,7 @@ interface ConnectedViewProps {
 export const ConnectedView: React.FC<ConnectedViewProps> = ({
   remainingSeconds,
   transfers,
+  roomCode,
   onEndSession,
   onSendFiles,
 }) => {
@@ -72,178 +74,188 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
   };
 
   return (
-    <section className="flex-1 flex flex-col min-h-0 p-4 sm:p-6 gap-4">
-      {/* Top Status Bar in Workspace */}
-      <div className="flex items-center justify-between gap-3 text-[13px] shrink-0">
-        <div className="flex items-center gap-2">
-          {/* Green connected dot */}
-          <span className="inline-block w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-          <span className="text-zinc-200 font-medium">Connected (Direct P2P)</span>
+    <section className="w-full max-w-4xl mx-auto flex-1 flex flex-col min-h-0 px-4 sm:px-6 py-4 gap-4">
+      {/* Workspace Status Bar */}
+      <div className="flex items-center justify-between gap-3 border-b border-[#26262A] pb-3 shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0" aria-hidden="true"></span>
+            <span className="text-[13px] font-medium text-[#F4F4F5] truncate">Connected (Direct P2P)</span>
+          </div>
+          {roomCode && (
+            <>
+              <span className="hidden md:inline-block text-[#3F3F46]">/</span>
+              <span className="hidden md:inline-block mono-num text-[12px] text-[#71717A]">{roomCode}</span>
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-4">
-          <span className="mono-num text-zinc-300 font-medium">{formatTime(remainingSeconds)}</span>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="mono-num text-[13px] font-medium text-[#D4D4D8] tabular-nums">
+            {formatTime(remainingSeconds)}
+          </span>
           <button
+            type="button"
             onClick={onEndSession}
-            className="text-zinc-500 hover:text-zinc-300 text-[13px] bg-transparent border-0 cursor-pointer transition-colors duration-150"
+            className="px-2.5 py-1.5 rounded-[6px] bg-[#141416] border border-[#26262A] text-[12px] font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:border-[#3F3F46] transition-colors duration-150 cursor-pointer"
           >
             End Session
           </button>
         </div>
       </div>
 
-      {/* Desktop Full-Bleed Dropzone & Mobile CTA */}
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        onChange={handleFileInputChange}
+        className="hidden"
+      />
+
+      {/* Desktop Dropzone (hidden on mobile) */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`flex-1 min-h-[168px] flex flex-col items-center justify-center gap-3 text-center p-6 border rounded-lg transition-colors duration-150 ${
+        onClick={() => fileInputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        aria-label="Drop files here or click to select files"
+        className={`hidden sm:flex flex-col items-center justify-center w-full py-8 px-6 rounded-[6px] bg-[#141416] border border-dashed transition-colors duration-150 cursor-pointer shrink-0 select-none ${
           isDragOver
-            ? 'border-zinc-400 bg-[#141416]'
-            : 'border-dashed border-[#3A3A40] bg-[#0A0A0B]/40 hover:border-zinc-500'
+            ? 'border-zinc-400 bg-[#18181B]'
+            : 'border-[#26262A] hover:border-[#3F3F46]'
         }`}
       >
         <svg
           width="20"
           height="20"
-          viewBox="0 0 24 24"
+          viewBox="0 0 18 18"
           fill="none"
-          stroke="#71717A"
-          strokeWidth="1.6"
-          strokeLinecap="square"
           aria-hidden="true"
+          className="text-[#8A8A93] mb-2"
         >
-          <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
+          <path
+            d="M9 12.5V3.5M9 3.5L5.5 7M9 3.5L12.5 7M3 14.5H15"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="square"
+            strokeLinejoin="miter"
+          />
         </svg>
-
-        <div className="hidden sm:block text-sm text-zinc-400">
-          Drop files anywhere in this area
-        </div>
-
-        {/* Mobile full-width #FF4D00 button, compact on desktop */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full sm:w-auto py-3.5 sm:py-2 px-6 rounded-md bg-[#FF4D00] text-[#0A0A0B] text-[15px] sm:text-[13px] font-semibold hover:bg-[#E64500] transition-colors duration-150 cursor-pointer shadow-sm"
-        >
-          <span className="sm:hidden">Send Files</span>
-          <span className="hidden sm:inline">Select files</span>
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          onChange={handleFileInputChange}
-          className="hidden"
-        />
+        <p className="text-[13px] font-medium text-[#E4E4E7]">
+          Drop files to transmit directly to paired device
+        </p>
+        <p className="mt-1 text-[12px] text-[#71717A]">
+          Click to select files • Streams peer-to-peer without disk buffering
+        </p>
       </div>
 
-      {/* Dense hairline-divided transfer list */}
-      <div className="bg-[#141416] border border-[#26262A] rounded-lg overflow-hidden shrink-0 flex flex-col">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#26262A] text-[11px] uppercase tracking-wider text-zinc-500">
+      {/* Mobile Primary Action Button (full-width #FF4D00, hidden on desktop) */}
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="flex sm:hidden items-center justify-center gap-2 w-full py-3.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[14px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors duration-150 cursor-pointer shrink-0"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M8 11.5V3M8 3L4.75 6.25M8 3L11.25 6.25M2.5 13H13.5"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="square"
+            strokeLinejoin="miter"
+          />
+        </svg>
+        <span>Send Files</span>
+      </button>
+
+      {/* Transfer List Container */}
+      <div className="flex-1 flex flex-col min-h-0 rounded-[6px] bg-[#141416] border border-[#26262A] overflow-hidden">
+        {/* Dense Table Header */}
+        <div className="px-3.5 py-2.5 border-b border-[#26262A] flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.06em] text-[#71717A] shrink-0">
           <span>Transfers</span>
-          <span className="mono-num normal-case">{transfers.length}</span>
+          <span className="mono-num text-[11px] text-[#71717A]">
+            {transfers.length} {transfers.length === 1 ? 'ITEM' : 'ITEMS'}
+          </span>
         </div>
 
-        <ul className="max-h-[34dvh] overflow-y-auto transfer-scroll divide-y divide-[#26262A]">
+        {/* Transfer Rows */}
+        <div className="flex-1 overflow-y-auto transfer-scroll divide-y divide-[#26262A]">
           {transfers.length === 0 ? (
-            <li className="px-4 py-6 text-center text-xs text-zinc-600">
-              No transfers yet. Drop or select files to start.
-            </li>
+            <div className="flex items-center justify-center h-full py-10 text-center text-xs text-zinc-600">
+              No transfers yet. Drop or select files to begin stream.
+            </div>
           ) : (
             transfers.map((t) => {
-              const isDone = t.status === 'completed';
               const isSend = t.direction === 'send';
+              const isDone = t.status === 'completed';
+              const percent = Math.min(100, Math.max(0, Math.round(t.percentage)));
 
               return (
-                <li
+                <div
                   key={t.id}
-                  className="flex items-center gap-3 px-4 py-2.5 text-xs text-zinc-300"
+                  className="px-3.5 py-3 flex flex-col gap-2 hover:bg-[#18181B]/50 transition-colors duration-100"
                 >
-                  {/* Up / Down arrow */}
-                  <div className="shrink-0 text-zinc-500">
-                    {isSend ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#FF4D00"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-label="Upload"
-                      >
-                        <path d="M12 19V5M5 12l7-7 7 7" />
-                      </svg>
-                    ) : (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#10B981"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-label="Download"
-                      >
-                        <path d="M12 5v14M19 12l-7 7-7-7" />
-                      </svg>
-                    )}
-                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Direction Arrow */}
+                      <span className="shrink-0 text-zinc-500">
+                        {isSend ? (
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#FF4D00]">
+                            <path d="M8 12V4M8 4L4.5 7.5M8 4L11.5 7.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="square" />
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#10B981]">
+                            <path d="M8 4V12M8 12L4.5 8.5M8 12L11.5 8.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="square" />
+                          </svg>
+                        )}
+                      </span>
 
-                  {/* Filename and Size */}
-                  <div className="min-w-0 flex-1 flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-zinc-200 font-medium">
+                      {/* Truncated Filename */}
+                      <span className="text-[13px] font-medium text-[#F4F4F5] truncate">
                         {t.name}
                       </span>
-                      <span className="mono-num text-[11px] text-zinc-500 shrink-0">
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      {/* Tabular File Size */}
+                      <span className="mono-num text-[12px] text-[#8A8A93]">
                         {formatSize(t.size)}
                       </span>
-                    </div>
 
-                    {/* Inline progress bar */}
-                    <div className="w-full h-[3px] bg-[#26262A] rounded-full overflow-hidden">
-                      <div
-                        className="h-full progress-fill"
-                        style={{ width: `${t.percentage}%` }}
-                      />
-                    </div>
-                  </div>
+                      {/* Speed in MB/s */}
+                      {t.status === 'transferring' && (
+                        <span className="mono-num text-[11px] text-[#FF4D00]">
+                          {t.speedMBs}
+                        </span>
+                      )}
 
-                  {/* Speed / Save action */}
-                  <div className="shrink-0 w-24 text-right flex justify-end">
-                    {isDone ? (
-                      <button
-                        onClick={() => handleSaveClick(t)}
-                        className="flex items-center gap-1.5 py-1 px-2.5 text-xs rounded border border-[#26262A] hover:border-zinc-500 text-zinc-200 bg-transparent transition-colors duration-150 cursor-pointer"
-                      >
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="square"
-                          aria-hidden="true"
+                      {/* Save Button for Completed Received Files */}
+                      {!isSend && isDone && (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveClick(t)}
+                          className="px-2.5 py-1 rounded-[4px] bg-[#0A0A0B] border border-[#26262A] text-[12px] font-medium text-[#F4F4F5] hover:border-[#3F3F46] hover:bg-[#141416] transition-colors duration-150 cursor-pointer"
                         >
-                          <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
-                        </svg>
-                        Save
-                      </button>
-                    ) : (
-                      <span className="mono-num text-xs text-zinc-400">
-                        {t.speedMBs || '0.0 MB/s'}
-                      </span>
-                    )}
+                          Save
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </li>
+
+                  {/* Progress Bar: 3px height with #FF4D00 fill */}
+                  <div className="w-full h-[3px] bg-[#26262A] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#FF4D00] transition-all duration-150"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
               );
             })
           )}
-        </ul>
+        </div>
       </div>
     </section>
   );

@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FlashDrop — Ephemeral P2P File Transfer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0A0A0B',
+            surface: '#141416',
+            hairline: '#26262A',
+            signal: '#FF4D00',
+            connected: '#10B981',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    :root {
+      --bg: #0A0A0B;
+      --surface: #141416;
+      --border: #26262A;
+      --signal: #FF4D00;
+      --connected: #10B981;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: #0A0A0B;
+      color: #F4F4F5;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+    }
+
+    .app-shell {
+      height: 100dvh;
+      width: 100%;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      display: flex;
+      flex-direction: column;
+      background-color: #0A0A0B;
+    }
+
+    .mono-num {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Progress bar is the only permitted gradient in the interface */
+    .progress-fill {
+      background: linear-gradient(90deg, #D94100 0%, #FF4D00 100%);
+      transition: width 180ms linear;
+    }
+
+    /* Minimal quiet spinner for Mobile Connecting state */
+    @keyframes spin-quiet {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    .spinner-quiet {
+      animation: spin-quiet 0.9s linear infinite;
+    }
+
+    /* Subtle dark scrollbar for dense transfer list */
+    .transfer-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .transfer-scroll::-webkit-scrollbar-track {
+      background: #141416;
+    }
+    .transfer-scroll::-webkit-scrollbar-thumb {
+      background: #26262A;
+      border-radius: 3px;
+    }
+    .transfer-scroll::-webkit-scrollbar-thumb:hover {
+      background: #3A3A40;
+    }
+
+    /* Technical corner brackets for QR frame */
+    .qr-bracket {
+      position: relative;
+      padding: 18px;
+    }
+    .qr-bracket::before,
+    .qr-bracket::after,
+    .qr-bracket-inner::before,
+    .qr-bracket-inner::after {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: #52525B;
+      border-style: solid;
+      pointer-events: none;
+    }
+    .qr-bracket::before {
+      top: 0;
+      left: 0;
+      border-width: 1.5px 0 0 1.5px;
+    }
+    .qr-bracket::after {
+      top: 0;
+      right: 0;
+      border-width: 1.5px 1.5px 0 0;
+    }
+    .qr-bracket-inner::before {
+      bottom: 0;
+      left: 0;
+      border-width: 0 0 1.5px 1.5px;
+    }
+    .qr-bracket-inner::after {
+      bottom: 0;
+      right: 0;
+      border-width: 0 1.5px 1.5px 0;
+    }
+
+    .dropzone-active {
+      border-color: #71717A !important;
+      background-color: #18181B !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ==================== STATE 1: DESKTOP WAITING ==================== -->
+    <section id="state-waiting" class="flex-1 flex flex-col justify-between min-h-0 px-5 sm:px-8 py-5">
+      <!-- Top Bar -->
+      <header class="w-full max-w-4xl mx-auto flex items-center justify-between gap-4 border-b border-hairline pb-4">
+        <div class="flex items-center gap-2.5">
+          <!-- 24x24 Monochrome Sharp Lightning / Transfer Mark -->
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#F4F4F5] shrink-0">
+            <path d="M13.5 2.5L5.5 13H12L10.5 21.5L18.5 11H12L13.5 2.5Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="miter" />
+          </svg>
+          <span class="text-[15px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">FlashDrop</span>
+          <span class="hidden sm:inline-block text-[#3F3F46] select-none">/</span>
+          <span id="waiting-room-id" class="hidden sm:inline-block mono-num text-[12px] text-[#71717A] tracking-[0.02em]">RM-7F4A-92C1</span>
+        </div>
+
+        <div class="px-2.5 py-1 rounded-[6px] bg-surface border border-hairline text-[11px] font-medium tracking-[0.06em] text-[#A1A1AA] uppercase whitespace-nowrap">
+          EPHEMERAL &bull; P2P ENCRYPTED
+        </div>
+      </header>
+
+      <!-- Center QR Area -->
+      <main class="flex-1 flex flex-col items-center justify-center min-h-0 py-6">
+        <div class="flex flex-col items-center">
+          <!-- QR Frame with Sharp Technical Corner Brackets Only -->
+          <div class="qr-bracket">
+            <div class="qr-bracket-inner">
+              <button
+                type="button"
+                id="qr-trigger-btn"
+                title="Simulate mobile QR scan"
+                class="block bg-[#F4F4F5] p-3 rounded-[4px] border border-hairline cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#71717A]"
+                aria-label="Session QR Code. Click to simulate mobile peer scan."
+              >
+                <div id="qr-container" class="w-[188px] h-[188px] sm:w-[208px] sm:h-[208px]"></div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Live Monospace Countdown Timer -->
+          <div class="mt-6 flex items-center gap-3">
+            <span id="waiting-timer" class="mono-num text-[24px] font-medium tracking-[0.04em] text-[#F4F4F5]">10:00</span>
+            <span class="h-3.5 w-[1px] bg-hairline"></span>
+            <span id="waiting-room-mobile" class="mono-num text-[12px] text-[#71717A]">RM-7F4A-92C1</span>
+          </div>
+
+          <!-- One Quiet Line of Instruction -->
+          <p class="mt-2.5 text-[13px] text-[#8A8A93] text-center max-w-md">
+            Scan with your phone camera to open a direct peer-to-peer channel.
+          </p>
+        </div>
+      </main>
+
+      <!-- Footer Line Only -->
+      <footer class="w-full max-w-4xl mx-auto border-t border-hairline pt-3.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] text-[#71717A]">
+        <p class="text-center sm:text-left">No servers store your files. Session dies when this tab closes.</p>
+        <div class="state-switcher flex items-center gap-1 mono-num text-[11px]" role="tablist" aria-label="Session state"></div>
+      </footer>
+    </section>
+
+    <!-- ==================== STATE 2: MOBILE CONNECTING ==================== -->
+    <section id="state-connecting" class="hidden flex-1 flex flex-col justify-between min-h-0 px-5 sm:px-8 py-5">
+      <header class="w-full max-w-4xl mx-auto flex items-center justify-between border-b border-hairline pb-4">
+        <div class="flex items-center gap-2.5">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#F4F4F5] shrink-0">
+            <path d="M13.5 2.5L5.5 13H12L10.5 21.5L18.5 11H12L13.5 2.5Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="miter" />
+          </svg>
+          <span class="text-[15px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">FlashDrop</span>
+        </div>
+        <span id="connecting-room-id" class="mono-num text-[12px] text-[#71717A]">RM-7F4A-92C1</span>
+      </header>
+
+      <main class="flex-1 flex flex-col items-center justify-center min-h-0">
+        <div class="flex flex-col items-center gap-3.5">
+          <!-- Quiet Inline SVG Spinner (<=18px, 1.6px stroke, no fill) -->
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" class="spinner-quiet text-[#A1A1AA]">
+            <circle cx="9" cy="9" r="7" stroke="#26262A" stroke-width="1.6" />
+            <path d="M9 2A7 7 0 0 1 16 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" />
+          </svg>
+          <p class="text-[13px] font-medium text-[#D4D4D8] tracking-[-0.01em]">Establishing P2P Tunnel&hellip;</p>
+        </div>
+      </main>
+
+      <footer class="w-full max-w-4xl mx-auto border-t border-hairline pt-3.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] text-[#71717A]">
+        <p class="mono-num text-[11px] text-[#52525B]">DTLS-SRTP / ICE NEGOTIATION</p>
+        <div class="state-switcher flex items-center gap-1 mono-num text-[11px]" role="tablist" aria-label="Session state"></div>
+      </footer>
+    </section>
+
+    <!-- ==================== STATE 3: CONNECTED WORKSPACE ==================== -->
+    <section id="state-connected" class="hidden flex-1 flex flex-col min-h-0 px-4 sm:px-8 py-4 sm:py-5">
+      <!-- Top Status Bar -->
+      <header class="w-full max-w-4xl mx-auto flex items-center justify-between gap-3 border-b border-hairline pb-3.5 shrink-0">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#F4F4F5] shrink-0 hidden sm:block">
+            <path d="M13.5 2.5L5.5 13H12L10.5 21.5L18.5 11H12L13.5 2.5Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="miter" />
+          </svg>
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2 h-2 rounded-full bg-connected shrink-0" aria-hidden="true"></span>
+            <span class="text-[13px] font-medium text-[#F4F4F5] truncate">Connected (Direct P2P)</span>
+          </div>
+          <span class="hidden md:inline-block text-[#3F3F46]">/</span>
+          <span id="connected-room-id" class="hidden md:inline-block mono-num text-[12px] text-[#71717A]">RM-7F4A-92C1</span>
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+          <span id="connected-timer" class="mono-num text-[13px] font-medium text-[#D4D4D8]">10:00</span>
+          <button
+            type="button"
+            id="end-session-btn"
+            class="px-2.5 py-1.5 rounded-[6px] bg-surface border border-hairline text-[12px] font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:border-[#3F3F46] transition-colors duration-150 cursor-pointer"
+          >
+            End Session
+          </button>
+        </div>
+      </header>
+
+      <!-- Workspace Body -->
+      <main class="w-full max-w-4xl mx-auto flex-1 flex flex-col gap-4 py-4 min-h-0">
+        <!-- Hidden File Input -->
+        <input type="file" id="file-input" multiple class="hidden" />
+
+        <!-- Desktop Full-Bleed Drop Zone -->
+        <div
+          id="desktop-dropzone"
+          role="button"
+          tabindex="0"
+          aria-label="Drop files here or click to select files"
+          class="hidden sm:flex flex-col items-center justify-center w-full py-9 px-6 rounded-[6px] bg-surface border border-dashed border-hairline hover:border-[#3F3F46] transition-colors duration-150 cursor-pointer shrink-0 select-none"
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" class="text-[#8A8A93] mb-2.5">
+            <path d="M9 12.5V3.5M9 3.5L5.5 7M9 3.5L12.5 7M3 14.5H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" />
+          </svg>
+          <p class="text-[13px] font-medium text-[#E4E4E7]">Drop files to transmit directly to paired device</p>
+          <p class="mt-1 text-[12px] text-[#71717A]">Click to select files &bull; Streams peer-to-peer without disk buffering</p>
+        </div>
+
+        <!-- Mobile Large Tactile Primary Action Button -->
+        <button
+          type="button"
+          id="mobile-send-btn"
+          class="flex sm:hidden items-center justify-center gap-2 w-full py-3.5 px-4 rounded-[6px] bg-signal text-[#0A0A0B] text-[14px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors duration-150 cursor-pointer shrink-0"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 11.5V3M8 3L4.75 6.25M8 3L11.25 6.25M2.5 13H13.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter" />
+          </svg>
+          <span>Send Files</span>
+        </button>
+
+        <!-- Transfer List Container -->
+        <div class="flex-1 flex flex-col min-h-0 rounded-[6px] bg-surface border border-hairline overflow-hidden">
+          <!-- Dense Table Header -->
+          <div class="px-3.5 py-2.5 border-b border-hairline flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.06em] text-[#71717A] shrink-0">
+            <span>Transfers</span>
+            <span id="transfer-summary" class="mono-num text-[11px] text-[#71717A]">3 ITEMS</span>
+          </div>
+
+          <!-- Dense Transfer Rows -->
+          <div id="transfer-list" class="flex-1 overflow-y-auto transfer-scroll divide-y divide-hairline"></div>
+        </div>
+      </main>
+
+      <!-- Workspace Footer -->
+      <footer class="w-full max-w-4xl mx-auto border-t border-hairline pt-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] text-[#71717A] shrink-0">
+        <span class="mono-num text-[11px] text-[#52525B]">WEBRTC DATACHANNEL &bull; ZERO RELAY STORAGE</span>
+        <div class="state-switcher flex items-center gap-1 mono-num text-[11px]" role="tablist" aria-label="Session state"></div>
+      </footer>
+    </section>
+
+    <!-- ==================== STATE 4: SESSION EXPIRED ==================== -->
+    <section id="state-expired" class="hidden flex-1 flex flex-col justify-between min-h-0 px-5 sm:px-8 py-5">
+      <header class="w-full max-w-4xl mx-auto flex items-center justify-between border-b border-hairline pb-4">
+        <div class="flex items-center gap-2.5">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#71717A] shrink-0">
+            <path d="M13.5 2.5L5.5 13H12L10.5 21.5L18.5 11H12L13.5 2.5Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="miter" />
+          </svg>
+          <span class="text-[15px] font-semibold tracking-[-0.02em] text-[#A1A1AA]">FlashDrop</span>
+        </div>
+        <span class="mono-num text-[12px] text-[#52525B]">00:00</span>
+      </header>
+
+      <main class="flex-1 flex items-center justify-center min-h-0">
+        <div class="w-full max-w-md rounded-[6px] bg-surface border border-hairline p-6">
+          <div class="flex items-start gap-3">
+            <!-- Inline SVG Icon (<=18px, 1.6px stroke, no fill) -->
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" class="text-[#71717A] shrink-0 mt-0.5">
+              <path d="M3 3L15 15M6.5 6.5L4.5 8.5C3.4 9.6 3.4 11.4 4.5 12.5L5.5 13.5C6.6 14.6 8.4 14.6 9.5 13.5L11.5 11.5M11.5 11.5L13.5 9.5C14.6 8.4 14.6 6.6 13.5 5.5L12.5 4.5C11.4 3.4 9.6 3.4 8.5 4.5L7.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" />
+            </svg>
+            <div>
+              <h1 class="text-[14px] font-medium text-[#F4F4F5] leading-snug">
+                Session Dissolved. All temporary keys and links have been wiped.
+              </h1>
+              <p class="mt-1.5 mono-num text-[11px] text-[#71717A]">
+                KEY MATERIAL ZEROED &bull; CHANNEL CLOSED
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            id="restart-session-btn"
+            class="mt-5 w-full py-2.5 px-4 rounded-[6px] bg-signal text-[#0A0A0B] text-[13px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors duration-150 cursor-pointer"
+          >
+            Start New Session
+          </button>
+        </div>
+      </main>
+
+      <footer class="w-full max-w-4xl mx-auto border-t border-hairline pt-3.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] text-[#71717A]">
+        <p>No servers store your files. Session dies when this tab closes.</p>
+        <div class="state-switcher flex items-center gap-1 mono-num text-[11px]" role="tablist" aria-label="Session state"></div>
+      </footer>
+    </section>
+
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const STATES = ['waiting', 'connecting', 'connected', 'expired'];
+      const STATE_LABELS = {
+        waiting: 'WAITING',
+        connecting: 'CONNECTING',
+        connected: 'CONNECTED',
+        expired: 'EXPIRED',
+      };
+
+      const appState = {
+        view: 'waiting',
+        roomId: 'RM-7F4A-92C1',
+        remainingSeconds: 600,
+        timerInterval: null,
+        connectTimeout: null,
+        transferInterval: null,
+        transfers: [],
+      };
+
+      function createInitialTransfers() {
+        return [
+          {
+            id: 'tx-1',
+            name: 'build-artifacts-v2.14.0.tar.gz',
+            sizeBytes: 193147699,
+            direction: 'down',
+            progress: 64,
+            speedMBs: 46.8,
+            status: 'active',
+          },
+          {
+            id: 'tx-2',
+            name: 'IMG_4821_PRO_RAW.DNG',
+            sizeBytes: 44879052,
+            direction: 'down',
+            progress: 100,
+            speedMBs: 0,
+            status: 'completed',
+          },
+          {
+            id: 'tx-3',
+            name: 'telemetry-dump-2026-11-26.parquet',
+            sizeBytes: 134742016,
+            direction: 'up',
+            progress: 100,
+            speedMBs: 0,
+            status: 'completed',
+          },
+        ];
+      }
+
+      appState.transfers = createInitialTransfers();
+
+      function generateRoomId() {
+        const chars = '0123456789ABCDEF';
+        let p1 = '';
+        let p2 = '';
+        for (let i = 0; i < 4; i++) {
+          p1 += chars[Math.floor(Math.random() * chars.length)];
+          p2 += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return 'RM-' + p1 + '-' + p2;
+      }
+
+      function formatTimer(totalSeconds) {
+        const clamped = Math.max(0, totalSeconds);
+        const m = Math.floor(clamped / 60);
+        const s = clamped % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      }
+
+      function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      /* Deterministic realistic 29x29 QR SVG matrix seeded by roomId */
+      function renderQRCode(seedText) {
+        const size = 29;
+        const grid = Array.from({ length: size }, () => Array(size).fill(0));
+        const reserved = Array.from({ length: size }, () => Array(size).fill(false));
+
+        function placeFinder(r0, c0) {
+          for (let r = -1; r <= 7; r++) {
+            for (let c = -1; c <= 7; c++) {
+              const rr = r0 + r;
+              const cc = c0 + c;
+              if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+              reserved[rr][cc] = true;
+              const inOuter = r >= 0 && r <= 6 && c >= 0 && c <= 6;
+              const isBorder = r === 0 || r === 6 || c === 0 || c === 6;
+              const isCore = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+              grid[rr][cc] = inOuter && (isBorder || isCore) ? 1 : 0;
+            }
+          }
+        }
+
+        function placeAlignment(r0, c0) {
+          for (let r = -2; r <= 2; r++) {
+            for (let c = -2; c <= 2; c++) {
+              const rr = r0 + r;
+              const cc = c0 + c;
+              reserved[rr][cc] = true;
+              const isBorder = Math.abs(r) === 2 || Math.abs(c) === 2;
+              const isCenter = r === 0 && c === 0;
+              grid[rr][cc] = isBorder || isCenter ? 1 : 0;
+            }
+          }
+        }
+
+        placeFinder(0, 0);
+        placeFinder(0, size - 7);
+        placeFinder(size - 7, 0);
+        placeAlignment(size - 7, size - 7);
+
+        for (let i = 8; i < size - 8; i++) {
+          reserved[6][i] = true;
+          grid[6][i] = i % 2 === 0 ? 1 : 0;
+          reserved[i][6] = true;
+          grid[i][6] = i % 2 === 0 ? 1 : 0;
+        }
+
+        let hash = 2166136261;
+        for (let i = 0; i < seedText.length; i++) {
+          hash ^= seedText.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+
+        function nextBit() {
+          hash ^= hash << 13;
+          hash ^= hash >>> 17;
+          hash ^= hash << 5;
+          return (hash >>> 0) % 2;
+        }
+
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if (!reserved[r][c]) {
+              grid[r][c] = nextBit();
+            }
+          }
+        }
+
+        let rects = '';
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if (grid[r][c] === 1) {
+              rects += '<rect x="' + c + '" y="' + r + '" width="1" height="1" />';
+            }
+          }
+        }
+
+        const svg =
+          '<svg viewBox="0 0 ' +
+          size +
+          ' ' +
+          size +
+          '" width="100%" height="100%" shape-rendering="crispEdges" fill="#0A0A0B" xmlns="http://www.w3.org/2000/svg">' +
+          rects +
+          '</svg>';
+
+        const container = document.getElementById('qr-container');
+        if (container) container.innerHTML = svg;
+      }
+
+      function updateRoomLabels() {
+        const ids = ['waiting-room-id', 'waiting-room-mobile', 'connecting-room-id', 'connected-room-id'];
+        ids.forEach((elId) => {
+          const el = document.getElementById(elId);
+          if (el) el.textContent = appState.roomId;
+        });
+      }
+
+      function updateTimerDisplays() {
+        const formatted = formatTimer(appState.remainingSeconds);
+        const waitingEl = document.getElementById('waiting-timer');
+        const connectedEl = document.getElementById('connected-timer');
+        if (waitingEl) waitingEl.textContent = formatted;
+        if (connectedEl) connectedEl.textContent = formatted;
+      }
+
+      function startCountdown() {
+        if (appState.timerInterval) {
+          clearInterval(appState.timerInterval);
+          appState.timerInterval = null;
+        }
+        appState.timerInterval = setInterval(() => {
+          if (appState.view === 'expired') return;
+          if (appState.remainingSeconds > 0) {
+            appState.remainingSeconds -= 1;
+            updateTimerDisplays();
+            if (appState.remainingSeconds === 0) {
+              setView('expired');
+            }
+          }
+        }, 1000);
+      }
+
+      function renderStateSwitchers() {
+        const switchers = document.querySelectorAll('.state-switcher');
+        switchers.forEach((container) => {
+          container.innerHTML = STATES.map((st) => {
+            const active = appState.view === st;
+            const cls = active
+              ? 'px-2 py-0.5 rounded-[4px] bg-surface border border-[#3F3F46] text-[#F4F4F5] cursor-pointer'
+              : 'px-2 py-0.5 rounded-[4px] border border-transparent text-[#52525B] hover:text-[#A1A1AA] transition-colors duration-150 cursor-pointer';
+            return (
+              '<button type="button" role="tab" aria-selected="' +
+              (active ? 'true' : 'false') +
+              '" data-target-state="' +
+              st +
+              '" class="' +
+              cls +
+              '">' +
+              STATE_LABELS[st] +
+              '</button>'
+            );
+          }).join('');
+        });
+      }
+
+      function renderTransfers() {
+        const listEl = document.getElementById('transfer-list');
+        const summaryEl = document.getElementById('transfer-summary');
+        if (!listEl) return;
+
+        const activeCount = appState.transfers.filter((t) => t.status === 'active').length;
+        if (summaryEl) {
+          summaryEl.textContent =
+            appState.transfers.length +
+            (appState.transfers.length === 1 ? ' ITEM' : ' ITEMS') +
+            (activeCount > 0 ? ' \u2022 ' + activeCount + ' ACTIVE' : '');
+        }
+
+        if (appState.transfers.length === 0) {
+          listEl.innerHTML =
+            '<div class="px-4 py-10 text-center text-[12px] text-[#71717A]">No files queued in this session.</div>';
+          return;
+        }
+
+        listEl.innerHTML = appState.transfers
+          .map((tx) => {
+            const arrowSvg =
+              tx.direction === 'up'
+                ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Outgoing"><path d="M7 11V3M7 3L3.75 6.25M7 3L10.25 6.25" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Incoming"><path d="M7 3V11M7 11L3.75 7.75M7 11L10.25 7.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter"/></svg>';
+
+            const isCompleted = tx.status === 'completed';
+            const speedText = isCompleted ? 'DONE' : tx.speedMBs.toFixed(1) + ' MB/s';
+            const speedClass = isCompleted ? 'text-[#71717A]' : 'text-[#D4D4D8]';
+
+            let actionHtml = '';
+            if (isCompleted && tx.direction === 'down') {
+              actionHtml =
+                '<button type="button" data-save-id="' +
+                escapeHtml(tx.id) +
+                '" class="px-2.5 py-1 rounded-[4px] bg-[#0A0A0B] border border-hairline text-[11px] font-medium text-[#F4F4F5] hover:border-[#52525B] transition-colors duration-150 cursor-pointer shrink-0">Save</button>';
+            } else if (isCompleted && tx.direction === 'up') {
+              actionHtml =
+                '<span class="mono-num text-[11px] text-[#71717A] px-1.5 shrink-0">SENT</span>';
+            } else {
+              actionHtml =
+                '<span class="mono-num text-[11px] text-[#A1A1AA] w-10 text-right shrink-0">' +
+                Math.floor(tx.progress) +
+                '%</span>';
+            }
+
+            return (
+              '<div class="px-3.5 py-3 flex flex-col gap-2 bg-surface">' +
+              '<div class="flex items-center justify-between gap-3 min-w-0">' +
+              '<div class="flex items-center gap-2.5 min-w-0">' +
+              '<span class="text-[#8A8A93] shrink-0">' +
+              arrowSvg +
+              '</span>' +
+              '<span class="text-[13px] font-medium text-[#F4F4F5] truncate" title="' +
+              escapeHtml(tx.name) +
+              '">' +
+              escapeHtml(tx.name) +
+              '</span>' +
+              '</div>' +
+              '<div class="flex items-center gap-3 sm:gap-4 shrink-0">' +
+              '<span class="mono-num text-[12px] text-[#8A8A93]">' +
+              formatBytes(tx.sizeBytes) +
+              '</span>' +
+              '<span class="mono-num text-[12px] w-[76px] text-right ' +
+              speedClass +
+              '">' +
+              speedText +
+              '</span>' +
+              actionHtml +
+              '</div>' +
+              '</div>' +
+              '<div class="w-full h-[3px] bg-[#0A0A0B] rounded-[2px] overflow-hidden">' +
+              '<div class="h-full progress-fill" style="width: ' +
+              Math.min(100, tx.progress).toFixed(1) +
+              '%"></div>' +
+              '</div>' +
+              '</div>'
+            );
+          })
+          .join('');
+      }
+
+      function startTransferSimulation() {
+        if (appState.transferInterval) {
+          clearInterval(appState.transferInterval);
+          appState.transferInterval = null;
+        }
+        appState.transferInterval = setInterval(() => {
+          if (appState.view !== 'connected') return;
+          let changed = false;
+          appState.transfers.forEach((tx) => {
+            if (tx.status === 'active') {
+              changed = true;
+              const delta = 1.6 + Math.random() * 2.4;
+              tx.progress = Math.min(100, tx.progress + delta);
+              tx.speedMBs = Math.max(24.0, Math.min(68.4, tx.speedMBs + (Math.random() - 0.48) * 3.8));
+              if (tx.progress >= 100) {
+                tx.progress = 100;
+                tx.speedMBs = 0;
+                tx.status = 'completed';
+              }
+            }
+          });
+          if (changed) renderTransfers();
+        }, 450);
+      }
+
+      function triggerDownload(tx) {
+        const payload =
+          'FlashDrop Ephemeral P2P Payload\nFile: ' +
+          tx.name +
+          '\nSize: ' +
+          formatBytes(tx.sizeBytes) +
+          '\nSession: ' +
+          appState.roomId +
+          '\n';
+        const blob = tx.fileObj instanceof Blob ? tx.fileObj : new Blob([payload], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = tx.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      function enqueueFiles(fileList) {
+        if (!fileList || fileList.length === 0) return;
+        Array.from(fileList).forEach((file, idx) => {
+          appState.transfers.unshift({
+            id: 'tx-' + Date.now() + '-' + idx,
+            name: file.name,
+            sizeBytes: file.size || 1024 * 512,
+            direction: 'up',
+            progress: 4,
+            speedMBs: 38.4 + Math.random() * 18.0,
+            status: 'active',
+            fileObj: file,
+          });
+        });
+        renderTransfers();
+      }
+
+      function setView(nextView, options) {
+        const opts = options || {};
+        if (appState.connectTimeout) {
+          clearTimeout(appState.connectTimeout);
+          appState.connectTimeout = null;
+        }
+
+        appState.view = nextView;
+
+        STATES.forEach((st) => {
+          const el = document.getElementById('state-' + st);
+          if (!el) return;
+          if (st === nextView) {
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+          } else {
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+          }
+        });
+
+        renderStateSwitchers();
+        updateTimerDisplays();
+
+        if (nextView === 'connecting' && opts.autoAdvance !== false) {
+          appState.connectTimeout = setTimeout(() => {
+            if (appState.view === 'connecting') {
+              setView('connected');
+            }
+          }, 1400);
+        }
+
+        if (nextView === 'connected') {
+          renderTransfers();
+        }
+      }
+
+      function startNewSession() {
+        appState.roomId = generateRoomId();
+        appState.remainingSeconds = 600;
+        appState.transfers = createInitialTransfers();
+        updateRoomLabels();
+        renderQRCode(appState.roomId);
+        updateTimerDisplays();
+        renderTransfers();
+        setView('waiting');
+      }
+
+      /* Event Delegation for State Switchers */
+      document.addEventListener('click', (e) => {
+        const tabBtn = e.target.closest('[data-target-state]');
+        if (tabBtn) {
+          const target = tabBtn.getAttribute('data-target-state');
+          if (STATES.includes(target)) {
+            if (target !== 'expired' && appState.remainingSeconds === 0) {
+              appState.remainingSeconds = 600;
+            }
+            setView(target, { autoAdvance: target === 'connecting' });
+          }
+          return;
+        }
+
+        const saveBtn = e.target.closest('[data-save-id]');
+        if (saveBtn) {
+          const txId = saveBtn.getAttribute('data-save-id');
+          const tx = appState.transfers.find((t) => t.id === txId);
+          if (tx) triggerDownload(tx);
+        }
+      });
+
+      /* QR click simulates mobile scan -> connecting -> connected */
+      const qrTriggerBtn = document.getElementById('qr-trigger-btn');
+      if (qrTriggerBtn) {
+        qrTriggerBtn.addEventListener('click', () => {
+          setView('connecting', { autoAdvance: true });
+        });
+      }
+
+      /* End Session & Restart Session */
+      const endBtn = document.getElementById('end-session-btn');
+      if (endBtn) {
+        endBtn.addEventListener('click', () => {
+          setView('expired');
+        });
+      }
+
+      const restartBtn = document.getElementById('restart-session-btn');
+      if (restartBtn) {
+        restartBtn.addEventListener('click', () => {
+          startNewSession();
+        });
+      }
+
+      /* File Input & Drag-and-Drop */
+      const fileInput = document.getElementById('file-input');
+      const desktopDropzone = document.getElementById('desktop-dropzone');
+      const mobileSendBtn = document.getElementById('mobile-send-btn');
+
+      if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+          enqueueFiles(e.target.files);
+          fileInput.value = '';
+        });
+      }
+
+      if (mobileSendBtn && fileInput) {
+        mobileSendBtn.addEventListener('click', () => fileInput.click());
+      }
+
+      if (desktopDropzone && fileInput) {
+        desktopDropzone.addEventListener('click', () => fileInput.click());
+        desktopDropzone.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+          }
+        });
+
+        ['dragenter', 'dragover'].forEach((evt) => {
+          desktopDropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            desktopDropzone.classList.add('dropzone-active');
+          });
+        });
+
+        ['dragleave', 'drop'].forEach((evt) => {
+          desktopDropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            desktopDropzone.classList.remove('dropzone-active');
+          });
+        });
+
+        desktopDropzone.addEventListener('drop', (e) => {
+          if (e.dataTransfer && e.dataTransfer.files) {
+            enqueueFiles(e.dataTransfer.files);
+          }
+        });
+      }
+
+      /* Initialize App */
+      updateRoomLabels();
+      renderQRCode(appState.roomId);
+      updateTimerDisplays();
+      renderTransfers();
+      renderStateSwitchers();
+      startCountdown();
+      startTransferSimulation();
+    })();
+  </script>
+</body>
+</html>

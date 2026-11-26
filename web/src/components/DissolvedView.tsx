@@ -8,10 +8,11 @@ export const DissolvedView: React.FC<DissolvedViewProps> = ({
   onStartNewSession,
 }) => {
   return (
-    <section className="flex-1 flex flex-col items-center justify-center px-4">
-      <div className="bg-[#141416] border border-[#26262A] rounded-lg p-6 max-w-sm w-full flex flex-col gap-5">
+    <section className="flex-1 flex items-center justify-center min-h-0 px-4 py-8">
+      {/* Centered matte card (max-w-md bg-[#141416] border border-[#26262A] rounded-[6px] p-6) */}
+      <div className="w-full max-w-md rounded-[6px] bg-[#141416] border border-[#26262A] p-6">
         <div className="flex items-start gap-3">
-          {/* Subtle icon */}
+          {/* Broken-link icon (<=18px, 1.6px stroke, no fill) */}
           <svg
             width="18"
             height="18"
@@ -38,8 +39,9 @@ export const DissolvedView: React.FC<DissolvedViewProps> = ({
         </div>
 
         <button
+          type="button"
           onClick={onStartNewSession}
-          className="w-full py-2.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[13px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors duration-150 cursor-pointer"
+          className="mt-5 w-full py-2.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[13px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors duration-150 cursor-pointer"
         >
           Start New Session
         </button>

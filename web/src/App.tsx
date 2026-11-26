@@ -19,13 +19,13 @@ import {
 
 export type AppViewState = 'waiting' | 'connecting' | 'connected' | 'dissolved';
 
-// Generate formatted human-readable room code like 7KQ-4MX-92D from UUID
+// Generate formatted human-readable room code like RM-7F4A-92C1 from UUID
 function formatRoomCode(id: string): string {
   const clean = id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  if (clean.length >= 9) {
-    return `${clean.substring(0, 3)}-${clean.substring(3, 6)}-${clean.substring(6, 9)}`;
+  if (clean.length >= 8) {
+    return `RM-${clean.substring(0, 4)}-${clean.substring(4, 8)}`;
   }
-  return id.substring(0, 8).toUpperCase();
+  return `RM-${id.substring(0, 8).toUpperCase()}`;
 }
 
 function getWsUrl(): string {
@@ -315,7 +315,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-shell">
-      <Header roomId={`ROOM ${roomCode}`} />
+      <Header roomCode={roomCode} />
 
       <main className="flex-1 flex flex-col min-h-0 relative">
         {viewState === 'waiting' && (
@@ -334,6 +334,7 @@ export const App: React.FC = () => {
           <ConnectedView
             remainingSeconds={remainingSeconds}
             transfers={transfers}
+            roomCode={roomCode}
             onEndSession={handleSessionDissolve}
             onSendFiles={handleSendFiles}
           />

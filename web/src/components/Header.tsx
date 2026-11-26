@@ -1,38 +1,42 @@
 import React from 'react';
 
 interface HeaderProps {
-  roomId?: string;
+  roomCode?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ roomId }) => {
+export const Header: React.FC<HeaderProps> = ({ roomCode }) => {
   return (
-    <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-hairline shrink-0 bg-bg">
+    <header className="w-full max-w-4xl mx-auto flex items-center justify-between gap-4 border-b border-[#26262A] pb-4 px-4 sm:px-6 pt-4 shrink-0">
       <div className="flex items-center gap-2.5">
-        {/* 24x24 geometric lightning SVG mark */}
+        {/* 24x24 crisp geometric lightning SVG */}
         <svg
           width="24"
           height="24"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#F4F4F5"
-          strokeWidth="1.6"
-          strokeLinejoin="miter"
           aria-hidden="true"
+          className="text-[#F4F4F5] shrink-0"
         >
-          <path d="M13 3 5 13h6l-1 8 8-10h-6z" />
+          <path
+            d="M13.5 2.5L5.5 13H12L10.5 21.5L18.5 11H12L13.5 2.5Z"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinejoin="miter"
+          />
         </svg>
-        <span className="text-[15px] font-semibold tracking-tight text-[#F4F4F5]">FlashDrop</span>
+        <span className="text-[15px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">FlashDrop</span>
+        {roomCode && (
+          <>
+            <span className="hidden sm:inline-block text-[#3F3F46] select-none">/</span>
+            <span className="hidden sm:inline-block mono-num text-[12px] text-[#71717A] tracking-[0.02em]">
+              {roomCode}
+            </span>
+          </>
+        )}
       </div>
 
-      <div className="flex items-center gap-3">
-        {roomId && (
-          <span className="hidden sm:inline-block mono-num text-[11px] text-zinc-500">
-            {roomId}
-          </span>
-        )}
-        <div className="mono-num text-[11px] tracking-wide text-zinc-400 border border-hairline rounded-md px-2.5 py-1 bg-surface">
-          EPHEMERAL • P2P ENCRYPTED
-        </div>
+      <div className="px-2.5 py-1 rounded-[6px] bg-[#141416] border border-[#26262A] text-[11px] font-medium tracking-[0.06em] text-[#A1A1AA] uppercase whitespace-nowrap">
+        EPHEMERAL • P2P ENCRYPTED
       </div>
     </header>
   );

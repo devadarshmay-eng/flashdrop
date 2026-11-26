@@ -1,125 +1,74 @@
-# FlashDrop ⚡
+<p align="center">
+  <img src="./docs/banner.png" alt="FlashDrop — Ephemeral QR-Initiated P2P File Transfer" width="100%" />
+</p>
 
-> **Ephemeral, Direct P2P File Transfer across Devices via WebRTC & Cloudflare Workers Durable Objects**
+<p align="center">
+  <strong>Instant browser-to-phone file transfer over WebRTC.</strong><br />
+  No accounts. No cloud storage. No persistent links. Every room dissolves when the tab closes.
+</p>
 
-FlashDrop establishes an encrypted, direct WebRTC peer-to-peer data channel between desktop and mobile devices using QR codes and an ephemeral signaling relay on Cloudflare Workers with Durable Objects. Files stream directly between devices in 16KB chunks with SCTP backpressure flow control—**zero cloud storage, zero file persistence, zero tracking**.
-
----
-
-## ⚡ System Architecture
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Host as Desktop (Host Peer)
-    participant Worker as Cloudflare DO (Signaling)
-    actor Guest as Mobile (Guest Peer)
-
-    Host->>Worker: WebSocket Connect /ws/:sessionId (Assigned: Host)
-    Host->>Host: Display QR Code & 10:00 Countdown
-    Guest->>Host: Camera Scans QR Code
-    Guest->>Worker: WebSocket Connect /ws/:sessionId (Assigned: Guest)
-    Worker->>Host: Broadcast PEER_JOINED
-    Host->>Worker: Relay WebRTC Offer (SDP)
-    Worker->>Guest: Relay WebRTC Offer (SDP)
-    Guest->>Worker: Relay WebRTC Answer (SDP)
-    Worker->>Host: Relay WebRTC Answer (SDP)
-    Host-->>Guest: Direct P2P DataChannel ('flashdrop-data') Established
-    Note over Host,Guest: Signaling Hibernates / Idle
-    Host->>Guest: Stream 16KB Chunks with SCTP Backpressure Flow Control
-    Host->>Host: End Session or 10-Minute Expiry
-    Host->>Worker: Close Socket / Storage Wiped
-    Worker-->>Guest: PEER_DISCONNECTED
-    Note over Host,Guest: Memory Zeroed & Keys Revoked
-```
+<p align="center">
+  <a href="#architecture"><img src="https://img.shields.io/badge/Transport-WebRTC_DataChannel-FF4D00?style=flat-square&labelColor=0A0A0B" alt="WebRTC DataChannel" /></a>
+  <a href="#architecture"><img src="https://img.shields.io/badge/Signaling-Cloudflare_Durable_Objects-141416?style=flat-square&labelColor=0A0A0B" alt="Cloudflare Durable Objects" /></a>
+  <a href="#security-model"><img src="https://img.shields.io/badge/Encryption-DTLS--SRTP_E2E-10B981?style=flat-square&labelColor=0A0A0B" alt="DTLS-SRTP E2E" /></a>
+  <a href="#security-model"><img src="https://img.shields.io/badge/Persistence-Zero_(RAM_Only)-141416?style=flat-square&labelColor=0A0A0B" alt="Zero Persistence" /></a>
+</p>
 
 ---
 
-## 🛠️ Tech Stack & Design System
+### How It Works
 
-- **Frontend (`/web`)**:
-  - React 19, TypeScript, Vite 6, Tailwind CSS
-  - Swiss Minimalist / Dark Tactical Aesthetic: Obsidian `#0A0A0B` background, `#141416` surface cards, `#26262A` hairline borders, `#FF4D00` Signal Orange progress bars, `#10B981` Direct P2P indicator
-  - Fonts: Inter & JetBrains Mono (tabular figures)
-  - Full-state management: Waiting / QR Scan &rarr; Connecting / Handshake &rarr; Connected Workspace &rarr; Dissolved State
-  - Screen WakeLock & navigation guards during active transfers
-- **Backend Signaling (`/worker`)**:
-  - Cloudflare Worker with Durable Objects
-  - Modern WebSocket Hibernation API (`ctx.acceptWebSocket`)
-  - Strict 2-peer connection enforcement (Host = 1st, Guest = 2nd, 3rd rejected with code `4003`)
-  - 10-minute auto-destruct alarm lifecycle with complete storage wipe
-  - 32KB payload size guard
-- **P2P Transfer Protocol**:
-  - 16KB binary chunked streaming over ordered reliable DataChannel
-  - SCTP backpressure control (pause > 256KB, resume at bufferedamountlow threshold 64KB)
-  - Pre-remoteDescription ICE candidate queueing and automatic ICE restart
+1. **Open on Desktop** — Generates a cryptographic room token (`crypto.randomUUID()`) and renders a high-contrast QR code bound to a short-lived Durable Object room.
+2. **Scan with Phone** — Your phone camera opens `/s/<sessionId>`, exchanges SDP/ICE candidates over WebSocket, and upgrades to a direct peer-to-peer WebRTC DataChannel.
+3. **Stream Directly** — Files transfer in **16 KB binary chunks** with SCTP backpressure control directly between devices.
+4. **Dissolve** — Closing either browser tab, clicking **End Session**, or hitting the **10-minute** TTL wipes the Durable Object in memory and revokes all browser `ObjectURL` buffers.
+
+<p align="center">
+  <img src="./docs/architecture.png" alt="Desktop Host to Mobile Peer DTLS-SRTP Tunnel with Zero Cloud Storage" width="100%" />
+</p>
 
 ---
 
-## 🚀 Quickstart & Development
+### Architecture
 
-### 1. Install Dependencies
+FlashDrop separates **connection discovery** from **payload transport** so file bytes never touch a server:
+
+| Component | Stack | Responsibility |
+| :--- | :--- | :--- |
+| **Frontend Client** | Vite, React, TypeScript, Tailwind | QR generation, WebRTC peer lifecycle, 16 KB chunker/reassembler, Wake Lock management. |
+| **Signaling Relay** | Cloudflare Workers + Durable Objects | WebSocket Hibernation API relay for SDP offers/answers and ICE candidates only (32 KB payload cap). |
+| **Data Transport** | WebRTC `RTCDataChannel` (SCTP/DTLS) | Direct encrypted binary stream between desktop and mobile browsers. |
+| **NAT Traversal** | Cloudflare & Google STUN | Resolves Wi-Fi-to-Wi-Fi and Wi-Fi-to-Cellular peer paths without relaying file data. |
+
+---
+
+### Security & Ephemerality Guarantees
+
+- **Strict 2-Peer Room Lock:** Each Durable Object accepts exactly one `host` and one `guest`. Any third connection attempt is rejected immediately with WebSocket close code `4003`.
+- **Hard 10-Minute TTL:** Every room schedules a Durable Object alarm (`storage.setAlarm`) at creation. At `T+10:00`, the server broadcasts `SESSION_EXPIRED`, terminates all sockets, and executes `storage.deleteAll()`.
+- **Instant Tab-Close Teardown:** Disconnecting either peer triggers an immediate `PEER_DISCONNECTED` broadcast and destroys the room state.
+- **Zero Disk / Bucket Footprint:** No D1 databases, no KV namespaces, no R2 buckets, no cookies, and no `localStorage` transfer logs.
+
+---
+
+### Local Development
+
 ```bash
-# Backend Signaling Worker
+# 1. Start the Cloudflare Worker + Durable Object signaling server
 cd worker
 npm install
+npx wrangler dev
 
-# Frontend Web Application
+# 2. Start the frontend client (in a separate terminal)
 cd ../web
 npm install
-```
-
-### 2. Run Test Suites
-```bash
-# Worker Unit & Integration Tests (16 tests)
-cd worker
-npm test
-
-# Web Unit Tests
-cd ../web
-npm test
-```
-
-### 3. Type Checking & Verification
-```bash
-# Worker Type Check
-cd worker
-npx tsc --noEmit
-
-# Web Type Check & Production Build
-cd ../web
-npm run build
-```
-
-### 4. Local Development
-```bash
-# In terminal 1 (Signaling Worker on port 8787):
-cd worker
-npm run dev
-
-# In terminal 2 (Web Client on port 5173):
-cd web
-npm run dev
+VITE_WS_URL=ws://localhost:8787 npm run dev
 ```
 
 ---
 
-## 🌐 Deployment
+### Live Deployment
 
-### Cloudflare Worker
-```bash
-cd worker
-npx wrangler deploy
-```
-
-### Cloudflare Pages
-```bash
-cd web
-npm run build
-npx wrangler pages deploy dist --project-name=flashdrop
-```
-
----
-
-## 📄 License
-MIT
+- **Signaling Worker**: `https://flashdrop-signaling.wick47501.workers.dev`
+- **Web App (Cloudflare Pages)**: `https://getflashdrop.pages.dev`
+- **GitHub Repository**: `https://github.com/devadarshmay-eng/flashdrop`

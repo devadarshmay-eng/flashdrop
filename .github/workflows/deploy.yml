@@ -97,7 +97,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'web'
-          command: pages deploy dist --project-name=flashdrop --branch=main
+          command: pages deploy dist --project-name=getflashdrop --branch=main
 
   deploy-preview:
     name: Deploy Preview
@@ -139,4 +139,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'web'
-          command: pages deploy dist --project-name=flashdrop --branch=${{ github.head_ref }}
+          command: pages deploy dist --project-name=getflashdrop --branch=${{ github.head_ref }}
