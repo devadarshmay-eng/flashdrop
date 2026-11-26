@@ -162,7 +162,7 @@ test.describe('FlashDrop Autonomous Two-Peer Live Production E2E Suite', () => {
     // STEP 4: MOBILE -> DESKTOP FILE TRANSFER (1.2 MB Binary File)
     // =========================================================================
     console.log('\n[4/6] Testing Mobile -> Desktop file transfer (1.2 MB binary payload)...');
-    const binarySize1_2MB = 1.2 * 1024 * 1024;
+    const binarySize1_2MB = Math.floor(1.2 * 1024 * 1024);
     const testBuffer1_2MB = crypto.randomBytes(binarySize1_2MB);
     const expectedHash1_2MB = computeSha256(testBuffer1_2MB);
     const testFileNameB = 'mobile-payload-1.2mb.bin';
