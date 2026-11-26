@@ -51,7 +51,7 @@ jobs:
   deploy-production:
     name: Deploy Production
     needs: [verify]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN != ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -89,7 +89,7 @@ jobs:
   deploy-preview:
     name: Deploy Preview
     needs: [verify]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && secrets.CLOUDFLARE_API_TOKEN != ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
