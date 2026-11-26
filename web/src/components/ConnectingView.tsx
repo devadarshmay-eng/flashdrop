@@ -7,32 +7,35 @@ interface ConnectingViewProps {
 export const ConnectingView: React.FC<ConnectingViewProps> = ({ roomCode }) => {
   return (
     <section className="flex-1 flex flex-col items-center justify-center min-h-0 px-4 py-8">
-      <div className="flex flex-col items-center gap-3.5">
-        {/* Centered minimal 18px stroke spinner (1.6px stroke, #A1A1AA) */}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 18 18"
-          fill="none"
-          aria-hidden="true"
-          className="spinner-quiet text-[#A1A1AA]"
-        >
-          <circle cx="9" cy="9" r="7" stroke="#26262A" strokeWidth="1.6" />
-          <path d="M9 2A7 7 0 0 1 16 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" />
-        </svg>
+      {/* Centered max-w-[400px] #111113 Instrument Panel */}
+      <div className="w-full max-w-[400px] rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] p-8 flex flex-col items-center text-center">
+        {/* 18px monochrome stroke spinner */}
+        <div className="w-10 h-10 rounded-[8px] bg-[#18181B] border border-[#27272A] flex items-center justify-center mb-4">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 18 18"
+            fill="none"
+            aria-hidden="true"
+            className="spinner-quiet text-[#F4F4F5]"
+          >
+            <circle cx="9" cy="9" r="7" stroke="#27272A" strokeWidth="1.6" />
+            <path d="M9 2A7 7 0 0 1 16 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" />
+          </svg>
+        </div>
 
-        <p className="text-[14px] font-medium text-[#D4D4D8] tracking-[-0.01em]">
+        <h2 className="text-[14px] font-medium text-[#F4F4F5] tracking-[-0.015em]">
           Establishing P2P Tunnel…
-        </p>
+        </h2>
 
-        <p className="mono-num text-[11px] text-[#52525B] tracking-wider uppercase">
-          DTLS-SRTP / ICE NEGOTIATION
+        <p className="mt-2 mono-num text-[11px] text-[#71717A] tracking-wider uppercase">
+          DTLS-SRTP • ICE CANDIDATE EXCHANGE
         </p>
 
         {roomCode && (
-          <span className="mono-num text-[11px] text-[#71717A] mt-1">
+          <div className="mt-4 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] mono-num text-[11px] text-[#A1A1AA]">
             {roomCode}
-          </span>
+          </div>
         )}
       </div>
     </section>

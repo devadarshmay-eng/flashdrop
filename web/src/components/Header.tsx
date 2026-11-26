@@ -6,7 +6,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ roomCode }) => {
   return (
-    <header className="w-full max-w-4xl mx-auto flex items-center justify-between gap-4 border-b border-[#26262A] pb-4 px-4 sm:px-6 pt-4 shrink-0">
+    <header className="w-full max-w-4xl mx-auto flex items-center justify-between gap-4 border-b border-[#232327] pb-3.5 px-4 sm:px-6 pt-3.5 shrink-0">
       <div className="flex items-center gap-2.5">
         {/* 24x24 crisp geometric lightning SVG */}
         <svg
@@ -24,7 +24,7 @@ export const Header: React.FC<HeaderProps> = ({ roomCode }) => {
             strokeLinejoin="miter"
           />
         </svg>
-        <span className="text-[15px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">FlashDrop</span>
+        <span className="text-[15px] font-semibold tracking-[-0.015em] text-[#F4F4F5]">FlashDrop</span>
         {roomCode && (
           <>
             <span className="hidden sm:inline-block text-[#3F3F46] select-none">/</span>
@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({ roomCode }) => {
         )}
       </div>
 
-      <div className="px-2.5 py-1 rounded-[6px] bg-[#141416] border border-[#26262A] text-[11px] font-medium tracking-[0.06em] text-[#A1A1AA] uppercase whitespace-nowrap">
+      <div className="px-2.5 py-1 rounded-[6px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] text-[10px] font-mono tracking-[0.06em] text-[#A1A1AA] uppercase whitespace-nowrap">
         EPHEMERAL • P2P ENCRYPTED
       </div>
     </header>
