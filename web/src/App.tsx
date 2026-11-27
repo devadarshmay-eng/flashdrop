@@ -293,7 +293,8 @@ export const App: React.FC = () => {
       },
       onOpen: () => {},
       onMessage: async (msg: SignalingMessage) => {
-        await handleSignalingMessage(msg, rtc, isHost);
+        const activeRtc = rtcRef.current || rtc;
+        await handleSignalingMessage(msg, activeRtc, isHost);
       },
       onClose: (code) => {
         if (code === 4000 || code === 4003) {
