@@ -310,7 +310,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
           Drop files to stream directly to paired device
         </p>
 
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
           <span className="text-[12px] text-[#71717A] group-hover:text-[#A1A1AA] transition-colors">
             Click to select
           </span>
@@ -318,26 +318,45 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
           <span className="px-1.5 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] font-mono text-[11px] text-[#71717A]">
             ⌘V to paste
           </span>
+          <span className="text-[#3F3F46]">•</span>
+          <span className="mono-num text-[11px] px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] text-[#10B981]">
+            No Size Limit
+          </span>
+        </div>
+
+        <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-[#71717A]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
+          <span>Zero Server Storage (0 B retained)</span>
+          <span className="text-[#3F3F46]">•</span>
+          <span>RAM-to-RAM Stream</span>
+          <span className="text-[#3F3F46]">•</span>
+          <span>Up to 2 GB+ safe per file</span>
         </div>
       </div>
 
       {/* Mobile Primary Action Button (full-width #FF4D00, hidden on desktop) */}
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        className="flex sm:hidden items-center justify-center gap-2 w-full py-3.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[14px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors cursor-pointer shrink-0 select-none shadow-sm"
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path
-            d="M8 11.5V3M8 3L4.75 6.25M8 3L11.25 6.25M2.5 13H13.5"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="square"
-            strokeLinejoin="miter"
-          />
-        </svg>
-        <span>Send Files</span>
-      </button>
+      <div className="flex sm:hidden flex-col gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="flex items-center justify-center gap-2 w-full py-3.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[14px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors cursor-pointer select-none shadow-sm"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M8 11.5V3M8 3L4.75 6.25M8 3L11.25 6.25M2.5 13H13.5"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="square"
+              strokeLinejoin="miter"
+            />
+          </svg>
+          <span>Send Files</span>
+        </button>
+        <div className="flex items-center justify-between px-1 text-[10px] mono-num text-[#71717A]">
+          <span>STORAGE: 0 B (RAM ONLY)</span>
+          <span>LIMIT: NO ARBITRARY CAP</span>
+        </div>
+      </div>
 
       {/* Structured Transfer Rows Container */}
       <div className="flex-1 flex flex-col min-h-0 rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] overflow-hidden">

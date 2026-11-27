@@ -474,6 +474,16 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
             <p className="mt-1.5 text-[12px] text-[#71717A] text-center max-w-[280px] leading-relaxed">
               Point your phone camera at the code to open a direct WebRTC tunnel.
             </p>
+
+            {/* Storage and Size Limit Indicator */}
+            <div className="mt-3.5 flex items-center justify-center gap-1.5 flex-wrap">
+              <span className="mono-num text-[10px] px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] text-[#A1A1AA]">
+                STORAGE: 0 B (ZERO PERSISTENCE)
+              </span>
+              <span className="mono-num text-[10px] px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] text-[#10B981]">
+                SIZE: NO HARD CAP
+              </span>
+            </div>
           </div>
 
           {/* Bottom Telemetry Strip: Live 10:00 countdown + AWAITING PEER badge */}
