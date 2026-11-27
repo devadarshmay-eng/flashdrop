@@ -78,16 +78,16 @@ FlashDrop enforces strict separation between **ephemeral connection coordination
 sequenceDiagram
     autonumber
     actor Desktop as Desktop Host
-    participant DO as Cloudflare Durable Object (TransferRoom)
+    participant DO as Cloudflare Durable Object
     actor Mobile as Mobile Guest
 
-    Desktop->>DO: 1. Upgrade WebSocket (GET /ws/:sessionId)
-    Note over Desktop,DO: Host registered; 10-minute alarm set
-    Desktop->>Desktop: 2. Render Session QR code (https://domain/s/:id)
+    Desktop->>DO: 1. Upgrade WebSocket to /ws/:sessionId
+    Note over Desktop,DO: Host registered, 10-minute alarm initialized
+    Desktop->>Desktop: 2. Render Session QR code
     
     Mobile->>Desktop: 3. Camera scans QR code
-    Mobile->>DO: 4. Upgrade WebSocket (GET /ws/:sessionId)
-    DO->>Desktop: 5. Broadcast { type: "PEER_JOINED" }
+    Mobile->>DO: 4. Upgrade WebSocket to /ws/:sessionId
+    DO->>Desktop: 5. Broadcast PEER_JOINED event
     
     Desktop->>DO: 6. Relay WebRTC SDP Offer
     DO->>Mobile: Forward SDP Offer
@@ -96,21 +96,21 @@ sequenceDiagram
     Desktop->>DO: 8. Exchange ICE Candidates
     DO->>Mobile: Forward ICE Candidates
     
-    alt WebRTC Direct P2P Connected (< 4.0s)
+    alt Direct P2P Connected in under 4.0s
         Desktop->>Mobile: 9a. Direct RTCDataChannel (SCTP/DTLS) established
         Note over Desktop,Mobile: Direct 16 KB chunked binary stream (Zero server bandwidth)
-    else Symmetric NAT / CGNAT Blocked (> 4.0s)
-        Desktop->>DO: 9b. Auto-failover: Stream { type: "RELAY_DATA" }
-        DO->>Mobile: In-memory forward { type: "RELAY_DATA" } (Token-bucket rate limited)
-        Mobile->>DO: Stream { type: "RELAY_ACK" } (Sliding window backpressure)
+    else Relay Fallback when NAT Blocked
+        Desktop->>DO: 9b. Auto-failover: Stream RELAY_DATA chunks
+        DO->>Mobile: In-memory forward RELAY_DATA (Token-bucket rate limited)
+        Mobile->>DO: Stream RELAY_ACK backpressure credits
         DO->>Desktop: Forward RELAY_ACK credit
     end
 
-    Note over Desktop,Mobile: Transfer completes -> Blob assembled -> ObjectURL downloaded
+    Note over Desktop,Mobile: Transfer completes, Blob assembled, download triggered
     Desktop->>DO: 10. Close tab or End Session
-    DO->>Mobile: Broadcast { type: "PEER_DISCONNECTED" }
-    DO->>DO: Wipe Durable Object storage & cancel alarms
-    Note over Desktop,Mobile: ObjectURLs revoked & memory zeroed
+    DO->>Mobile: Broadcast PEER_DISCONNECTED
+    DO->>DO: Wipe Durable Object storage and cancel alarms
+    Note over Desktop,Mobile: ObjectURLs revoked and memory zeroed
 ```
 
 ---
