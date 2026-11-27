@@ -248,23 +248,23 @@ test.describe('FlashDrop Autonomous Two-Peer Live Production E2E Suite', () => {
     console.log('RUNNING WEBSOCKET ENCRYPTED RELAY FALLBACK TEST');
     console.log('=============================================================');
 
-    // Context A (Desktop Host with WebRTC connection failure simulated)
+    // Context A (Desktop Host with WebRTC ICE candidate gathering blocked to force relay fallback)
     const contextA = await browser.newContext({
       viewport: { width: 1280, height: 800 },
       acceptDownloads: true,
     });
 
-    // In Context A, simulate WebRTC failure after offer/answer so fallback timer triggers
+    // In Context A, simulate strict symmetric NAT / firewall by blocking ICE candidate exchange and data channel
     await contextA.addInitScript(() => {
-      const origSetRemote = RTCPeerConnection.prototype.setRemoteDescription;
-      RTCPeerConnection.prototype.setRemoteDescription = function () {
-        setTimeout(() => {
-          try {
-            Object.defineProperty(this, 'connectionState', { value: 'failed', configurable: true });
-            this.dispatchEvent(new Event('connectionstatechange'));
-          } catch {}
-        }, 150);
-        return origSetRemote.apply(this, arguments as any);
+      RTCPeerConnection.prototype.addIceCandidate = () => Promise.resolve();
+      const origCreateDc = RTCPeerConnection.prototype.createDataChannel;
+      RTCPeerConnection.prototype.createDataChannel = function (label: string, opts?: any) {
+        const dc = origCreateDc.call(this, label, opts);
+        Object.defineProperty(dc, 'onopen', {
+          set() {},
+          get() { return null; },
+        });
+        return dc;
       };
     });
 
@@ -281,22 +281,17 @@ test.describe('FlashDrop Autonomous Two-Peer Live Production E2E Suite', () => {
     });
     console.log(`  Relay Test Session URL: ${sessionUrl}`);
 
-    // Context B (Mobile Guest with WebRTC failure simulated)
+    // Context B (Mobile Guest with WebRTC ICE candidate exchange blocked)
     const contextB = await browser.newContext({
       viewport: { width: 390, height: 844 },
       acceptDownloads: true,
     });
     await contextB.addInitScript(() => {
-      const origSetRemote = RTCPeerConnection.prototype.setRemoteDescription;
-      RTCPeerConnection.prototype.setRemoteDescription = function () {
-        setTimeout(() => {
-          try {
-            Object.defineProperty(this, 'connectionState', { value: 'failed', configurable: true });
-            this.dispatchEvent(new Event('connectionstatechange'));
-          } catch {}
-        }, 150);
-        return origSetRemote.apply(this, arguments as any);
-      };
+      RTCPeerConnection.prototype.addIceCandidate = () => Promise.resolve();
+      Object.defineProperty(RTCPeerConnection.prototype, 'ondatachannel', {
+        set() {},
+        get() { return null; },
+      });
     });
 
     const pageB = await contextB.newPage();

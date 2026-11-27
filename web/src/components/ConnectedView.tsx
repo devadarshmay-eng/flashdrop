@@ -216,7 +216,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
           </div>
 
           {/* Connection Telemetry Badge */}
-          <div className="hidden xs:flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] mono-num text-[10px] text-[#A1A1AA]">
+          <div data-testid="connected-telemetry" className="flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] mono-num text-[10px] text-[#A1A1AA]">
             <span
               className={`w-1 h-1 rounded-full ${
                 isRelay ? 'bg-[#F59E0B]' : connectionType === 'TURN RELAY' ? 'bg-[#F59E0B]' : 'bg-[#10B981]'
