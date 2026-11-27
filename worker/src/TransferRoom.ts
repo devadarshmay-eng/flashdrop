@@ -17,17 +17,17 @@ export class TransferRoom extends DurableObject<Env> {
 
     const url = new URL(request.url);
     const requestedRole = url.searchParams.get("role") as PeerRole | null;
+    const peerId = url.searchParams.get("peerId") || "";
 
     let existingSockets = this.ctx.getWebSockets();
 
-    // If an incoming connection arrives for an existing role (e.g. guest reconnecting/refreshing),
-    // gracefully replace the older socket for that role without cascading disconnect!
-    if (requestedRole === "guest" || requestedRole === "host") {
+    // 1. If an incoming connection arrives with the same peerId (reconnection),
+    // gracefully replace the older socket for that peer without triggering a disconnect cascade!
+    if (peerId) {
       for (const s of existingSockets) {
         try {
           const att = s.deserializeAttachment() as WebSocketAttachment | null;
-          if (att && att.role === requestedRole) {
-            // Detach role to prevent triggering peer disconnect cascade on remaining peers
+          if (att && att.peerId === peerId) {
             s.serializeAttachment({ role: null, joinedAt: 0 });
             s.close(1000, "Replaced by reconnecting peer");
           }
@@ -43,7 +43,7 @@ export class TransferRoom extends DurableObject<Env> {
       });
     }
 
-    // Enforce strict 2-peer limit (host = 1st peer, guest = 2nd peer)
+    // 2. Strict 2-Peer Limit:
     // Reject any 3rd distinct socket attempt immediately with close code 4003 ('Room Full')
     if (existingSockets.length >= 2) {
       const pair = new WebSocketPair();
@@ -67,6 +67,7 @@ export class TransferRoom extends DurableObject<Env> {
 
     const attachment: WebSocketAttachment = {
       role,
+      peerId,
       joinedAt: Date.now(),
     };
 

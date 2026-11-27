@@ -29,5 +29,6 @@ export interface SignalingMessage {
 
 export interface WebSocketAttachment {
   role: PeerRole | null;
+  peerId?: string;
   joinedAt: number;
 }

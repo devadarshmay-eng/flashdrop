@@ -15,6 +15,7 @@ export interface SignalingClientOptions {
 }
 
 export class SignalingClient {
+  private peerId: string = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
   private ws: WebSocket | null = null;
   private url: string;
   private sessionId: string;
@@ -53,8 +54,8 @@ export class SignalingClient {
     this.cleanupSocket();
 
     const normalizedUrl = this.url.replace(/\/+$/, '');
-    const roleQuery = this.role ? `?role=${encodeURIComponent(this.role)}` : '';
-    const wsUrl = `${normalizedUrl}/ws/${this.sessionId}${roleQuery}`;
+    const roleParam = this.role ? `&role=${encodeURIComponent(this.role)}` : '';
+    const wsUrl = `${normalizedUrl}/ws/${this.sessionId}?peerId=${encodeURIComponent(this.peerId)}${roleParam}`;
 
     try {
       this.ws = new WebSocket(wsUrl);
