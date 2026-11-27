@@ -206,6 +206,43 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const resetHostRtc = (id: string = sessionId) => {
+    if (rtcRef.current) {
+      rtcRef.current.close();
+      rtcRef.current = null;
+    }
+    const rtc = new PeerConnectionManager(
+      {
+        onDataChannelOpen: () => {
+          setViewState('connected');
+          updateWebRtcTelemetry();
+          setTimeout(updateWebRtcTelemetry, 1200);
+        },
+        onDataChannelClose: () => {
+          setViewState('waiting');
+          resetHostRtc(id);
+        },
+        onConnectionStateChange: (state) => {
+          if (state === 'connected') {
+            setViewState('connected');
+            updateWebRtcTelemetry();
+            setTimeout(updateWebRtcTelemetry, 1200);
+          }
+        },
+      },
+      undefined,
+      (candidate) => {
+        signalingRef.current?.send({
+          type: 'ICE_CANDIDATE',
+          candidate,
+        });
+      }
+    );
+    rtcRef.current = rtc;
+    const dc = rtc.createDataChannel('flashdrop-data');
+    setupTransferChannels(dc);
+  };
+
   const initSession = (id: string, role: SessionRole) => {
     cleanupAll();
 
@@ -221,15 +258,18 @@ export const App: React.FC = () => {
           setTimeout(updateWebRtcTelemetry, 1200);
         },
         onDataChannelClose: () => {
-          handleSessionDissolve();
+          if (isHost) {
+            setViewState('waiting');
+            resetHostRtc(id);
+          } else {
+            handleSessionDissolve();
+          }
         },
         onConnectionStateChange: (state) => {
           if (state === 'connected') {
             setViewState('connected');
             updateWebRtcTelemetry();
             setTimeout(updateWebRtcTelemetry, 1200);
-          } else if (state === 'failed') {
-            handleSessionDissolve();
           }
         },
       },
@@ -339,8 +379,13 @@ export const App: React.FC = () => {
         break;
 
       case 'PEER_DISCONNECTED':
-      case 'SESSION_EXPIRED':
-        handleSessionDissolve();
+        if (isHost) {
+          console.warn('[FlashDrop] Guest disconnected. Resetting host to waiting state...');
+          resetHostRtc(sessionId);
+          setViewState('waiting');
+        } else {
+          handleSessionDissolve();
+        }
         break;
 
       default:

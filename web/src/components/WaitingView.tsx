@@ -36,6 +36,7 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanLoopRef = useRef<number | null>(null);
+  const scannedRef = useRef<boolean>(false);
 
   const formatTime = (totalSecs: number) => {
     const mins = Math.floor(Math.max(0, totalSecs) / 60);
@@ -181,6 +182,7 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
   const startCameraScanner = async () => {
     setIsScanning(true);
     setScannerError('');
+    scannedRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -258,8 +260,10 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
   };
 
   const handleScannedValue = (rawValue: string): boolean => {
+    if (scannedRef.current) return true;
     const match = rawValue.match(/\/s\/([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
+      scannedRef.current = true;
       stopCameraScanner();
       if (onJoinSession) {
         onJoinSession(match[1]);

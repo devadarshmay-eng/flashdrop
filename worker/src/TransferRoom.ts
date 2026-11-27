@@ -15,10 +15,36 @@ export class TransferRoom extends DurableObject<Env> {
       return new Response("Expected WebSocket Upgrade", { status: 426 });
     }
 
-    const existingSockets = this.ctx.getWebSockets();
+    const url = new URL(request.url);
+    const requestedRole = url.searchParams.get("role") as PeerRole | null;
+
+    let existingSockets = this.ctx.getWebSockets();
+
+    // If an incoming connection arrives for an existing role (e.g. guest reconnecting/refreshing),
+    // gracefully replace the older socket for that role without cascading disconnect!
+    if (requestedRole === "guest" || requestedRole === "host") {
+      for (const s of existingSockets) {
+        try {
+          const att = s.deserializeAttachment() as WebSocketAttachment | null;
+          if (att && att.role === requestedRole) {
+            // Detach role to prevent triggering peer disconnect cascade on remaining peers
+            s.serializeAttachment({ role: null, joinedAt: 0 });
+            s.close(1000, "Replaced by reconnecting peer");
+          }
+        } catch {}
+      }
+      existingSockets = this.ctx.getWebSockets().filter((s) => {
+        try {
+          const att = s.deserializeAttachment() as WebSocketAttachment | null;
+          return att && att.role !== null;
+        } catch {
+          return false;
+        }
+      });
+    }
 
     // Enforce strict 2-peer limit (host = 1st peer, guest = 2nd peer)
-    // Reject any 3rd socket attempt immediately with close code 4003 ('Room Full')
+    // Reject any 3rd distinct socket attempt immediately with close code 4003 ('Room Full')
     if (existingSockets.length >= 2) {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
@@ -26,9 +52,6 @@ export class TransferRoom extends DurableObject<Env> {
       server.close(4003, "Room Full");
       return new Response(null, { status: 101, webSocket: client });
     }
-
-    const url = new URL(request.url);
-    const requestedRole = url.searchParams.get("role") as PeerRole | null;
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -117,14 +140,19 @@ export class TransferRoom extends DurableObject<Env> {
       return;
     }
 
-    // Handle keepalive ping
-    if (parsed.type === "ping") {
+    // Handle keepalive ping (case-insensitive)
+    const msgType = String(parsed.type || "").toLowerCase();
+    if (msgType === "ping") {
       try {
         ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
       } catch {}
+      return;
+    }
+    if (msgType === "pong") {
+      return;
     }
 
-    // Relay signaling messages (offer, answer, ice-candidate, ping, pong, etc.) only between peers
+    // Relay signaling messages (offer, answer, ice-candidate, etc.) only between peers
     const sockets = this.ctx.getWebSockets();
     const payloadToSend = typeof message === "string" ? message : JSON.stringify(parsed);
 
@@ -155,27 +183,42 @@ export class TransferRoom extends DurableObject<Env> {
       // Attachment missing or deserialization failed
     }
 
-    // If socket was not an accepted participant (e.g. was rejected 3rd peer), ignore
+    // If socket was not an accepted participant or role was cleared, ignore
     if (!attachment || !attachment.role) {
       return;
     }
 
-    // Broadcast { type: "PEER_DISCONNECTED" } to remaining peer, close remaining sockets, wipe state
+    const isHost = attachment.role === "host";
     const remainingSockets = this.ctx.getWebSockets().filter((s) => s !== closingWs);
-    for (const peer of remainingSockets) {
-      try {
-        peer.send(JSON.stringify({ type: "PEER_DISCONNECTED" }));
-        peer.close(1000, "Peer Disconnected");
-      } catch (err) {
-        console.error("Failed to close remaining peer:", err);
-      }
-    }
 
-    try {
-      await this.ctx.storage.deleteAll();
-      await this.ctx.storage.deleteAlarm();
-    } catch (err) {
-      console.error("Failed to wipe storage on peer disconnect:", err);
+    if (isHost) {
+      // Host left: session is truly dissolved. Notify any connected guest and wipe storage.
+      for (const peer of remainingSockets) {
+        try {
+          peer.send(JSON.stringify({ type: "PEER_DISCONNECTED" }));
+          peer.close(1000, "Host Left");
+        } catch (err) {
+          console.error("Failed to close remaining peer:", err);
+        }
+      }
+
+      try {
+        await this.ctx.storage.deleteAll();
+        await this.ctx.storage.deleteAlarm();
+      } catch (err) {
+        console.error("Failed to wipe storage on host disconnect:", err);
+      }
+    } else {
+      // Guest left or disconnected:
+      // DO NOT terminate host! DO NOT wipe storage!
+      // Simply notify host that guest disconnected so host resets to waiting state.
+      for (const peer of remainingSockets) {
+        try {
+          peer.send(JSON.stringify({ type: "PEER_DISCONNECTED" }));
+        } catch (err) {
+          console.error("Failed to notify host:", err);
+        }
+      }
     }
   }
 

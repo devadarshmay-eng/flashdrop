@@ -9,6 +9,8 @@ export interface SignalingMessage {
     | 'ICE_CANDIDATE'
     | 'PING'
     | 'PONG'
+    | 'ping'
+    | 'pong'
     | 'PEER_DISCONNECTED'
     | 'SESSION_EXPIRED'
     | 'ERROR';

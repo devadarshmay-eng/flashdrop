@@ -294,7 +294,31 @@ describe("TransferRoom Durable Object", () => {
     expect(mockState.storage.deleteAll).toHaveBeenCalled();
   });
 
-  it("should handle peer disconnect: broadcast PEER_DISCONNECTED, close remaining sockets, wipe state", async () => {
+  it("should handle peer disconnect: broadcast PEER_DISCONNECTED, close remaining sockets, wipe state when host leaves", async () => {
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+
+    const hostWs = acceptedSockets[0];
+    const guestWs = acceptedSockets[1];
+
+    // Host disconnects
+    hostWs.closed = true;
+    await room.webSocketClose(hostWs as unknown as WebSocket, 1000, "Normal Closure", true);
+
+    // Guest receives PEER_DISCONNECTED
+    const guestLast = JSON.parse(guestWs.sentMessages[guestWs.sentMessages.length - 1]);
+    expect(guestLast).toEqual({ type: "PEER_DISCONNECTED" });
+
+    // Guest socket closed
+    expect(guestWs.closed).toBe(true);
+    expect(guestWs.closeCode).toBe(1000);
+
+    // Storage and alarm wiped
+    expect(mockState.storage.deleteAll).toHaveBeenCalled();
+    expect(mockState.storage.deleteAlarm).toHaveBeenCalled();
+  });
+
+  it("should handle guest disconnect: notify host with PEER_DISCONNECTED while keeping host socket open", async () => {
     await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
     await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
 
@@ -309,13 +333,8 @@ describe("TransferRoom Durable Object", () => {
     const hostLast = JSON.parse(hostWs.sentMessages[hostWs.sentMessages.length - 1]);
     expect(hostLast).toEqual({ type: "PEER_DISCONNECTED" });
 
-    // Host socket closed
-    expect(hostWs.closed).toBe(true);
-    expect(hostWs.closeCode).toBe(1000);
-
-    // Storage and alarm wiped
-    expect(mockState.storage.deleteAll).toHaveBeenCalled();
-    expect(mockState.storage.deleteAlarm).toHaveBeenCalled();
+    // Host socket remains open for reconnection
+    expect(hostWs.closed).toBe(false);
   });
 
   it("should handle peer error similarly to peer disconnect", async () => {

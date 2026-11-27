@@ -37,7 +37,7 @@ export class SignalingClient {
     this.url = options.url;
     this.sessionId = options.sessionId;
     this.role = options.role || null;
-    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 25000;
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 10000;
     this.reconnectIntervalMs = options.reconnectIntervalMs ?? 2000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
 
@@ -80,12 +80,14 @@ export class SignalingClient {
           ? JSON.parse(event.data) 
           : event.data;
 
-        if (data.type === 'PONG') {
+        const msgType = String(data.type || '').toLowerCase();
+
+        if (msgType === 'pong') {
           return;
         }
 
-        if (data.type === 'PING') {
-          this.send({ type: 'PONG' });
+        if (msgType === 'ping') {
+          this.send({ type: 'pong' });
           return;
         }
 
@@ -150,7 +152,7 @@ export class SignalingClient {
     this.stopHeartbeat();
     this.pingTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.send({ type: 'PING' });
+        this.send({ type: 'ping' });
       }
     }, this.heartbeatIntervalMs);
   }
