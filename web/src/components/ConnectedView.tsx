@@ -5,7 +5,8 @@ interface ConnectedViewProps {
   remainingSeconds: number;
   transfers: TransferProgress[];
   roomCode?: string;
-  connectionType?: 'DIRECT LAN' | 'P2P STUN' | 'TURN RELAY';
+  connectionType?: 'DIRECT LAN' | 'P2P STUN' | 'TURN RELAY' | 'WS RELAY';
+  isRelayFallback?: boolean;
   verificationKey?: string;
   onEndSession: () => void;
   onSendFiles: (files: FileList | File[]) => void;
@@ -39,12 +40,14 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
   transfers,
   roomCode,
   connectionType = 'P2P STUN',
+  isRelayFallback = false,
   verificationKey = 'KEY 9F2A',
   onEndSession,
   onSendFiles,
   onCancelTransfer,
 }) => {
   const [isWindowDragging, setIsWindowDragging] = useState(false);
+  const [draggedFileCount, setDraggedFileCount] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef<number>(0);
 
@@ -60,13 +63,15 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
     return 'text-[#F4F4F5]';
   };
 
-  // Full-viewport drag-and-drop listener
+  // Full-viewport drag-and-drop listener with file item counting
   useEffect(() => {
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
       dragCounterRef.current++;
       if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
         setIsWindowDragging(true);
+        const count = e.dataTransfer.items ? e.dataTransfer.items.length : 1;
+        setDraggedFileCount(count);
       }
     };
 
@@ -76,6 +81,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
       if (dragCounterRef.current <= 0) {
         dragCounterRef.current = 0;
         setIsWindowDragging(false);
+        setDraggedFileCount(0);
       }
     };
 
@@ -87,6 +93,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
       e.preventDefault();
       dragCounterRef.current = 0;
       setIsWindowDragging(false);
+      setDraggedFileCount(0);
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         onSendFiles(e.dataTransfer.files);
       }
@@ -148,8 +155,10 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
     });
   };
 
+  const isRelay = isRelayFallback || connectionType === 'WS RELAY';
+
   return (
-    <section className="w-full max-w-full sm:max-w-[640px] mx-auto flex-1 flex flex-col min-h-0 px-4 sm:px-0 py-4 gap-4">
+    <section className="w-full max-w-4xl mx-auto flex-1 flex flex-col min-h-0 px-4 sm:px-6 py-4 gap-4">
       {/* Full-Viewport Drag Overlay */}
       {isWindowDragging && (
         <div
@@ -162,14 +171,15 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
             e.stopPropagation();
             dragCounterRef.current = 0;
             setIsWindowDragging(false);
+            setDraggedFileCount(0);
             if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
               onSendFiles(e.dataTransfer.files);
             }
           }}
-          className="fixed inset-3 rounded-[10px] border border-dashed border-[#FF4D00] bg-[#0A0A0B]/95 z-50 flex flex-col items-center justify-center select-none"
+          className="fixed inset-3 rounded-[12px] border-2 border-dashed border-[#FF4D00] bg-[#0A0A0B]/95 z-50 flex flex-col items-center justify-center select-none backdrop-blur-sm"
         >
-          <div className="w-12 h-12 rounded-[8px] bg-[#18181B] border border-[#27272A] flex items-center justify-center text-[#FF4D00] mb-3">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <div className="w-14 h-14 rounded-[10px] bg-[#18181B] border border-[#27272A] flex items-center justify-center text-[#FF4D00] mb-3 shadow-[0_0_30px_rgba(255,77,0,0.15)]">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
                 d="M12 16V4M12 4L7 9M12 4L17 9M4 20H20"
                 stroke="currentColor"
@@ -179,11 +189,11 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
               />
             </svg>
           </div>
-          <p className="text-[15px] font-semibold tracking-[-0.015em] text-[#F4F4F5]">
-            Release to stream directly to paired device
+          <p className="text-[16px] font-semibold tracking-[-0.015em] text-[#F4F4F5]">
+            Release to stream {draggedFileCount > 1 ? `${draggedFileCount} files` : 'file'} directly to paired device
           </p>
-          <p className="mt-1 mono-num text-[11px] text-[#71717A] uppercase tracking-wider">
-            END-TO-END ENCRYPTED • 16KB CHUNKS
+          <p className="mt-1.5 mono-num text-[11px] text-[#71717A] uppercase tracking-wider">
+            {isRelay ? 'ENCRYPTED RELAY • 16KB CHUNKS' : 'DIRECT P2P TUNNEL • 16KB CHUNKS'}
           </p>
         </div>
       )}
@@ -192,25 +202,27 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
       <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] px-4 py-3 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex items-center gap-2 min-w-0" data-testid="connected-status">
-            {/* 6px #10B981 dot */}
+            {/* Dynamic connected indicator dot: emerald for Direct P2P, amber for Encrypted Relay */}
             <span
-              className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0"
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                isRelay ? 'bg-[#F59E0B]' : 'bg-[#10B981]'
+              }`}
               data-testid="connected-indicator"
               aria-hidden="true"
             />
             <span className="text-[13px] font-medium text-[#F4F4F5] truncate">
-              Connected (Direct P2P)
+              {isRelay ? 'Connected (Encrypted Relay)' : 'Connected (Direct P2P)'}
             </span>
           </div>
 
-          {/* Real WebRTC Candidate Telemetry Badge */}
+          {/* Connection Telemetry Badge */}
           <div className="hidden xs:flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] mono-num text-[10px] text-[#A1A1AA]">
             <span
               className={`w-1 h-1 rounded-full ${
-                connectionType === 'TURN RELAY' ? 'bg-[#F59E0B]' : 'bg-[#10B981]'
+                isRelay ? 'bg-[#F59E0B]' : connectionType === 'TURN RELAY' ? 'bg-[#F59E0B]' : 'bg-[#10B981]'
               }`}
             />
-            <span>{connectionType}</span>
+            <span>{isRelay ? 'WS RELAY' : connectionType}</span>
           </div>
 
           {/* E2E DTLS Fingerprint Verification Code */}
@@ -274,9 +286,9 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
         role="button"
         tabIndex={0}
         aria-label="Drop files here or click to select files"
-        className="hidden sm:flex flex-col items-center justify-center w-full py-8 px-6 rounded-[10px] bg-[#111113] border border-dashed border-[#232327] hover:border-[#3F3F46] transition-colors cursor-pointer shrink-0 select-none group"
+        className="hidden sm:flex flex-col items-center justify-center w-full py-9 px-6 rounded-[10px] bg-[#111113] border border-dashed border-[#26262A] hover:border-[#3F3F46] transition-all duration-150 cursor-pointer shrink-0 select-none group shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
       >
-        <div className="w-9 h-9 rounded-[6px] bg-[#18181B] border border-[#27272A] group-hover:border-[#3F3F46] flex items-center justify-center text-[#A1A1AA] group-hover:text-[#F4F4F5] transition-colors mb-2.5">
+        <div className="w-10 h-10 rounded-[8px] bg-[#18181B] border border-[#27272A] group-hover:border-[#3F3F46] group-hover:bg-[#1C1C20] flex items-center justify-center text-[#A1A1AA] group-hover:text-[#F4F4F5] transition-all mb-3 shadow-sm">
           <svg
             width="18"
             height="18"
@@ -298,8 +310,8 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
           Drop files to stream directly to paired device
         </p>
 
-        <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-[12px] text-[#71717A]">
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[12px] text-[#71717A] group-hover:text-[#A1A1AA] transition-colors">
             Click to select
           </span>
           <span className="text-[#3F3F46]">•</span>
@@ -313,7 +325,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="flex sm:hidden items-center justify-center gap-2 w-full py-3.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[14px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors cursor-pointer shrink-0 select-none"
+        className="flex sm:hidden items-center justify-center gap-2 w-full py-3.5 px-4 rounded-[6px] bg-[#FF4D00] text-[#0A0A0B] text-[14px] font-semibold tracking-[-0.01em] hover:bg-[#E64500] transition-colors cursor-pointer shrink-0 select-none shadow-sm"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path
@@ -343,7 +355,7 @@ export const ConnectedView: React.FC<ConnectedViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveAll}
-                className="px-2 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] hover:border-[#3F3F46] text-[10px] font-medium text-[#F4F4F5] transition-colors cursor-pointer select-none"
+                className="px-2.5 py-0.5 rounded-[4px] bg-[#18181B] border border-[#27272A] hover:border-[#3F3F46] text-[10px] font-medium text-[#F4F4F5] transition-colors cursor-pointer select-none"
               >
                 Save All ({completedIncoming.length})
               </button>

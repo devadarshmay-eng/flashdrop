@@ -14,6 +14,9 @@ import {
   TransferProgress,
   SessionRole,
   SignalingMessage,
+  TransferChannel,
+  WebRTCDataChannelAdapter,
+  WebSocketRelayChannelAdapter,
   mobileManager,
 } from './lib';
 
@@ -56,13 +59,17 @@ export const App: React.FC = () => {
   const [sessionId, setSessionId] = useState<string>('');
   const [remainingSeconds, setRemainingSeconds] = useState<number>(600);
   const [transfers, setTransfers] = useState<TransferProgress[]>([]);
-  const [connectionType, setConnectionType] = useState<'DIRECT LAN' | 'P2P STUN' | 'TURN RELAY'>('P2P STUN');
+  const [connectionType, setConnectionType] = useState<'DIRECT LAN' | 'P2P STUN' | 'TURN RELAY' | 'WS RELAY'>('P2P STUN');
+  const [isRelayFallback, setIsRelayFallback] = useState<boolean>(false);
   const [verificationKey, setVerificationKey] = useState<string>('KEY 9F2A');
 
   const signalingRef = useRef<SignalingClient | null>(null);
   const rtcRef = useRef<PeerConnectionManager | null>(null);
   const senderRef = useRef<FileTransferSender | null>(null);
   const receiverRef = useRef<FileTransferReceiver | null>(null);
+  const channelRef = useRef<TransferChannel | null>(null);
+  const fallbackTimerRef = useRef<any>(null);
+  const isRelayFallbackRef = useRef<boolean>(false);
   const timerRef = useRef<any>(null);
   const thumbnailsRef = useRef<Map<string, string>>(new Map());
 
@@ -206,7 +213,42 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const activateRelayFallback = useCallback(() => {
+    if (channelRef.current?.channelType === 'webrtc' && channelRef.current.isReady) {
+      return;
+    }
+    if (!signalingRef.current) return;
+
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+
+    console.warn('[FlashDrop] WebRTC connection stalled or failed. Activating WebSocket Relay Fallback...');
+    const relayChannel = new WebSocketRelayChannelAdapter(signalingRef.current);
+    setupTransferChannels(relayChannel, true);
+  }, []);
+
+  const startFallbackTimer = useCallback(() => {
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+    }
+    fallbackTimerRef.current = setTimeout(() => {
+      activateRelayFallback();
+    }, 4000);
+  }, [activateRelayFallback]);
+
   const resetHostRtc = (id: string = sessionId) => {
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+    setIsRelayFallback(false);
+    isRelayFallbackRef.current = false;
+    if (channelRef.current) {
+      channelRef.current.close();
+      channelRef.current = null;
+    }
     if (rtcRef.current) {
       rtcRef.current.close();
       rtcRef.current = null;
@@ -214,9 +256,15 @@ export const App: React.FC = () => {
     const rtc = new PeerConnectionManager(
       {
         onDataChannelOpen: () => {
-          setViewState('connected');
-          updateWebRtcTelemetry();
-          setTimeout(updateWebRtcTelemetry, 1200);
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = null;
+          }
+          if (!isRelayFallbackRef.current) {
+            setViewState('connected');
+            updateWebRtcTelemetry();
+            setTimeout(updateWebRtcTelemetry, 1200);
+          }
         },
         onDataChannelClose: () => {
           setViewState('waiting');
@@ -224,9 +272,17 @@ export const App: React.FC = () => {
         },
         onConnectionStateChange: (state) => {
           if (state === 'connected') {
-            setViewState('connected');
-            updateWebRtcTelemetry();
-            setTimeout(updateWebRtcTelemetry, 1200);
+            if (fallbackTimerRef.current) {
+              clearTimeout(fallbackTimerRef.current);
+              fallbackTimerRef.current = null;
+            }
+            if (!isRelayFallbackRef.current) {
+              setViewState('connected');
+              updateWebRtcTelemetry();
+              setTimeout(updateWebRtcTelemetry, 1200);
+            }
+          } else if (state === 'failed') {
+            activateRelayFallback();
           }
         },
       },
@@ -253,9 +309,15 @@ export const App: React.FC = () => {
     const rtc = new PeerConnectionManager(
       {
         onDataChannelOpen: () => {
-          setViewState('connected');
-          updateWebRtcTelemetry();
-          setTimeout(updateWebRtcTelemetry, 1200);
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = null;
+          }
+          if (!isRelayFallbackRef.current) {
+            setViewState('connected');
+            updateWebRtcTelemetry();
+            setTimeout(updateWebRtcTelemetry, 1200);
+          }
         },
         onDataChannelClose: () => {
           if (isHost) {
@@ -267,9 +329,17 @@ export const App: React.FC = () => {
         },
         onConnectionStateChange: (state) => {
           if (state === 'connected') {
-            setViewState('connected');
-            updateWebRtcTelemetry();
-            setTimeout(updateWebRtcTelemetry, 1200);
+            if (fallbackTimerRef.current) {
+              clearTimeout(fallbackTimerRef.current);
+              fallbackTimerRef.current = null;
+            }
+            if (!isRelayFallbackRef.current) {
+              setViewState('connected');
+              updateWebRtcTelemetry();
+              setTimeout(updateWebRtcTelemetry, 1200);
+            }
+          } else if (state === 'failed') {
+            activateRelayFallback();
           }
         },
       },
@@ -303,6 +373,12 @@ export const App: React.FC = () => {
       },
     });
 
+    signaling.addRelayListener((msg: SignalingMessage) => {
+      if (msg.type === 'RELAY_DATA' && !isRelayFallbackRef.current) {
+        activateRelayFallback();
+      }
+    });
+
     signalingRef.current = signaling;
     signaling.connect();
 
@@ -311,6 +387,7 @@ export const App: React.FC = () => {
       const dc = rtc.createDataChannel('flashdrop-data');
       setupTransferChannels(dc);
     } else {
+      startFallbackTimer();
       const originalSetup = (rtc as any).setupDataChannel.bind(rtc);
       (rtc as any).setupDataChannel = (dc: RTCDataChannel) => {
         originalSetup(dc);
@@ -319,9 +396,16 @@ export const App: React.FC = () => {
     }
   };
 
-  const setupTransferChannels = (dc: RTCDataChannel) => {
+  const setupTransferChannels = (channelOrDc: TransferChannel | RTCDataChannel, isRelay = false) => {
+    const channel: TransferChannel =
+      'channelType' in channelOrDc
+        ? channelOrDc
+        : new WebRTCDataChannelAdapter(channelOrDc);
+
+    channelRef.current = channel;
+
     const sender = new FileTransferSender({
-      dataChannel: dc,
+      channel,
       onProgress: (p) => updateTransferProgress(p),
       onComplete: (p) => updateTransferProgress(p),
       onError: (_id, err) => console.error('Send error:', err),
@@ -329,13 +413,20 @@ export const App: React.FC = () => {
     senderRef.current = sender;
 
     const receiver = new FileTransferReceiver({
-      dataChannel: dc,
+      channel,
       autoDownload: false,
       onProgress: (p) => updateTransferProgress(p),
       onComplete: (p) => updateTransferProgress(p),
       onError: (_id, err) => console.error('Receive error:', err),
     });
     receiverRef.current = receiver;
+
+    if (isRelay) {
+      setIsRelayFallback(true);
+      isRelayFallbackRef.current = true;
+      setConnectionType('WS RELAY');
+      setViewState('connected');
+    }
   };
 
   const handleSignalingMessage = async (
@@ -347,6 +438,7 @@ export const App: React.FC = () => {
       case 'PEER_JOINED':
         if (isHost) {
           setViewState('connecting');
+          startFallbackTimer();
           const offer = await rtc.createOffer();
           signalingRef.current?.send({
             type: 'OFFER',
@@ -358,6 +450,7 @@ export const App: React.FC = () => {
       case 'OFFER':
         if (!isHost && msg.sdp) {
           setViewState('connecting');
+          startFallbackTimer();
           const answer = await rtc.handleOffer(msg.sdp);
           signalingRef.current?.send({
             type: 'ANSWER',
@@ -434,10 +527,10 @@ export const App: React.FC = () => {
     if (senderRef.current) {
       senderRef.current.cancel(id);
     }
-    // Forward cancel signal to receiver over DataChannel if open
-    if (rtcRef.current?.dataChannel && rtcRef.current.dataChannel.readyState === 'open') {
+    // Forward cancel signal to receiver over active channel if open
+    if (channelRef.current && channelRef.current.isReady) {
       try {
-        rtcRef.current.dataChannel.send(
+        channelRef.current.send(
           JSON.stringify({ type: 'FILE_CANCEL', id, reason: 'Cancelled by user' })
         );
       } catch (e) {
@@ -495,6 +588,16 @@ export const App: React.FC = () => {
   };
 
   const cleanupAll = () => {
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+    setIsRelayFallback(false);
+    isRelayFallbackRef.current = false;
+    if (channelRef.current) {
+      channelRef.current.close();
+      channelRef.current = null;
+    }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -546,6 +649,7 @@ export const App: React.FC = () => {
             transfers={transfers}
             roomCode={roomCode}
             connectionType={connectionType}
+            isRelayFallback={isRelayFallback}
             verificationKey={verificationKey}
             onEndSession={handleSessionDissolve}
             onSendFiles={handleSendFiles}

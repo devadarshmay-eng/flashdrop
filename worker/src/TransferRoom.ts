@@ -3,10 +3,31 @@ import type { Env, PeerRole, WebSocketAttachment, SignalingMessage } from "./typ
 
 const MAX_PAYLOAD_SIZE = 32 * 1024; // 32KB payload guard
 const SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_MESSAGES_PER_SECOND = 200; // In-memory rate limit per socket
 
 export class TransferRoom extends DurableObject<Env> {
+  // In-memory sliding 1-second rate limiter per socket
+  private socketRateLimits = new WeakMap<WebSocket, { count: number; windowStart: number }>();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+  }
+
+  private checkRateLimit(ws: WebSocket): boolean {
+    const now = Date.now();
+    let limiter = this.socketRateLimits.get(ws);
+    if (!limiter || now - limiter.windowStart >= 1000) {
+      limiter = { count: 1, windowStart: now };
+      this.socketRateLimits.set(ws, limiter);
+      return true;
+    }
+
+    if (limiter.count >= MAX_MESSAGES_PER_SECOND) {
+      return false;
+    }
+
+    limiter.count += 1;
+    return true;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -127,13 +148,32 @@ export class TransferRoom extends DurableObject<Env> {
       return;
     }
 
+    // In-memory rate limiting check (max 200 msgs/sec per socket)
+    if (!this.checkRateLimit(ws)) {
+      try {
+        ws.send(JSON.stringify({ type: "ERROR", error: "Rate limit exceeded (max 200 msg/s)" }));
+      } catch {}
+      return;
+    }
+
+    // If raw binary ArrayBuffer is sent, relay directly in-memory to other peer
+    if (typeof message !== "string") {
+      const sockets = this.ctx.getWebSockets();
+      for (const peer of sockets) {
+        if (peer !== ws) {
+          try {
+            peer.send(message);
+          } catch (err) {
+            console.error("Failed to relay binary message to peer:", err);
+          }
+        }
+      }
+      return;
+    }
+
     let parsed: SignalingMessage;
     try {
-      const text =
-        typeof message === "string"
-          ? message
-          : new TextDecoder().decode(message);
-      parsed = JSON.parse(text);
+      parsed = JSON.parse(message);
     } catch {
       try {
         ws.send(JSON.stringify({ type: "ERROR", error: "Invalid JSON message" }));
@@ -153,14 +193,12 @@ export class TransferRoom extends DurableObject<Env> {
       return;
     }
 
-    // Relay signaling messages (offer, answer, ice-candidate, etc.) only between peers
+    // Relay all messages (signaling, RELAY_DATA, RELAY_ACK, etc.) in-memory to other peer
     const sockets = this.ctx.getWebSockets();
-    const payloadToSend = typeof message === "string" ? message : JSON.stringify(parsed);
-
     for (const peer of sockets) {
       if (peer !== ws) {
         try {
-          peer.send(payloadToSend);
+          peer.send(message);
         } catch (err) {
           console.error("Failed to relay message to peer:", err);
         }

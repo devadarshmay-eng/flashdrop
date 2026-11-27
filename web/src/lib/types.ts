@@ -13,12 +13,17 @@ export interface SignalingMessage {
     | 'pong'
     | 'PEER_DISCONNECTED'
     | 'SESSION_EXPIRED'
-    | 'ERROR';
+    | 'ERROR'
+    | 'RELAY_DATA'
+    | 'RELAY_ACK';
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
   role?: SessionRole;
   payload?: any;
   message?: string;
+  data?: string; // base64 encoded binary data or serialized JSON wire message
+  ackSeq?: number;
+  seq?: number;
 }
 
 export interface FileMetadata {
@@ -76,4 +81,18 @@ export interface WebRTCConfig {
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
   onIceConnectionStateChange?: (state: RTCIceConnectionState) => void;
   onSignalingStateChange?: (state: RTCSignalingState) => void;
+}
+
+/**
+ * Universal TransferChannel abstraction that can encapsulate either
+ * an RTCDataChannel (direct P2P) or a WebSocket relay channel.
+ */
+export interface TransferChannel {
+  readonly channelType: 'webrtc' | 'relay';
+  readonly isReady: boolean;
+  send(data: string | ArrayBuffer): void;
+  waitForDrain(): Promise<void>;
+  onMessage?: (data: string | ArrayBuffer) => void;
+  onClose?: () => void;
+  close(): void;
 }

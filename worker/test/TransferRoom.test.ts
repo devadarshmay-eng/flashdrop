@@ -355,4 +355,64 @@ describe("TransferRoom Durable Object", () => {
     expect(guestWs.closed).toBe(true);
     expect(mockState.storage.deleteAll).toHaveBeenCalled();
   });
+
+  it("should relay RELAY_DATA and RELAY_ACK messages between peers", async () => {
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+
+    const hostWs = acceptedSockets[0];
+    const guestWs = acceptedSockets[1];
+
+    // Host sends RELAY_DATA packet
+    const relayDataMsg = JSON.stringify({
+      type: "RELAY_DATA",
+      seq: 1,
+      chunk: "SGVsbG8gV29ybGQ=",
+    });
+    await room.webSocketMessage(hostWs as unknown as WebSocket, relayDataMsg);
+    expect(guestWs.sentMessages).toContain(relayDataMsg);
+
+    // Guest sends RELAY_ACK packet
+    const relayAckMsg = JSON.stringify({
+      type: "RELAY_ACK",
+      seq: 1,
+    });
+    await room.webSocketMessage(guestWs as unknown as WebSocket, relayAckMsg);
+    expect(hostWs.sentMessages).toContain(relayAckMsg);
+  });
+
+  it("should relay raw binary ArrayBuffer messages between peers", async () => {
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+
+    const hostWs = acceptedSockets[0];
+    const guestWs = acceptedSockets[1];
+
+    const binaryData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer;
+    await room.webSocketMessage(hostWs as unknown as WebSocket, binaryData);
+
+    expect(guestWs.sentMessages.length).toBeGreaterThan(1);
+  });
+
+  it("should enforce sliding rate limit of 200 msg/s per socket", async () => {
+    await room.fetch(new Request("https://signaling.local/ws/test-room", { headers: { Upgrade: "websocket" } }));
+    const hostWs = acceptedSockets[0];
+
+    const normalMsg = JSON.stringify({ type: "ping" });
+
+    // Send 200 messages (all should succeed)
+    for (let i = 0; i < 200; i++) {
+      await room.webSocketMessage(hostWs as unknown as WebSocket, normalMsg);
+    }
+
+    // 201st message should trigger rate limit error
+    await room.webSocketMessage(hostWs as unknown as WebSocket, normalMsg);
+
+    const lastMsg = JSON.parse(hostWs.sentMessages[hostWs.sentMessages.length - 1]);
+    expect(lastMsg).toEqual({
+      type: "ERROR",
+      error: "Rate limit exceeded (max 200 msg/s)",
+    });
+  });
 });
+

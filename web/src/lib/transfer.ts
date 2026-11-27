@@ -4,21 +4,25 @@ import {
   FileCancelMessage,
   TransferWireMessage,
   TransferProgress,
+  TransferChannel,
 } from './types';
+import { WebRTCDataChannelAdapter } from './channel';
 
 export const CHUNK_SIZE = 16384; // 16 KB binary chunks
 export const BUFFER_LOW_THRESHOLD = 65536; // 64 KB
 export const BUFFER_HIGH_THRESHOLD = 262144; // 256 KB
 
 export interface FileTransferSenderOptions {
-  dataChannel: RTCDataChannel;
+  channel?: TransferChannel | RTCDataChannel;
+  dataChannel?: RTCDataChannel; // Backward-compatible alias
   onProgress?: (progress: TransferProgress) => void;
   onComplete?: (progress: TransferProgress) => void;
   onError?: (id: string, error: Error) => void;
 }
 
 export interface FileTransferReceiverOptions {
-  dataChannel: RTCDataChannel;
+  channel?: TransferChannel | RTCDataChannel;
+  dataChannel?: RTCDataChannel; // Backward-compatible alias
   onProgress?: (progress: TransferProgress) => void;
   onComplete?: (progress: TransferProgress) => void;
   onError?: (id: string, error: Error) => void;
@@ -26,19 +30,31 @@ export interface FileTransferReceiverOptions {
 }
 
 export class FileTransferSender {
-  private dc: RTCDataChannel;
+  private channel: TransferChannel;
   private onProgressCb?: (progress: TransferProgress) => void;
   private onCompleteCb?: (progress: TransferProgress) => void;
   private onErrorCb?: (id: string, error: Error) => void;
   private activeTransfers = new Map<string, { cancelled: boolean }>();
 
   constructor(options: FileTransferSenderOptions) {
-    this.dc = options.dataChannel;
+    const rawChannel = options.channel || options.dataChannel;
+    if (!rawChannel) {
+      throw new Error('FileTransferSender requires a channel or dataChannel');
+    }
+
+    if ('send' in rawChannel && 'waitForDrain' in rawChannel) {
+      this.channel = rawChannel as TransferChannel;
+    } else {
+      this.channel = new WebRTCDataChannelAdapter(rawChannel as RTCDataChannel);
+    }
+
     this.onProgressCb = options.onProgress;
     this.onCompleteCb = options.onComplete;
     this.onErrorCb = options.onError;
+  }
 
-    this.dc.bufferedAmountLowThreshold = BUFFER_LOW_THRESHOLD;
+  public getChannelType(): 'webrtc' | 'relay' {
+    return this.channel.channelType;
   }
 
   public async sendFile(file: File | Blob, customName?: string): Promise<string> {
@@ -61,7 +77,7 @@ export class FileTransferSender {
     };
 
     // Send metadata header
-    this.dc.send(JSON.stringify(metadata));
+    this.channel.send(JSON.stringify(metadata));
 
     let transferredBytes = 0;
     const startTime = performance.now();
@@ -87,21 +103,19 @@ export class FileTransferSender {
         const transferState = this.activeTransfers.get(id);
         if (!transferState || transferState.cancelled) {
           const cancelMsg: FileCancelMessage = { type: 'FILE_CANCEL', id, reason: 'Sender cancelled' };
-          this.dc.send(JSON.stringify(cancelMsg));
+          this.channel.send(JSON.stringify(cancelMsg));
           progress.status = 'cancelled';
           if (this.onProgressCb) this.onProgressCb({ ...progress });
           return id;
         }
 
-        // SCTP Backpressure control:
-        if (this.dc.bufferedAmount > BUFFER_HIGH_THRESHOLD) {
-          await this.waitForBufferLow();
-        }
+        // Backpressure / Sliding Window flow control:
+        await this.channel.waitForDrain();
 
         const slice = file.slice(offset, offset + CHUNK_SIZE);
         const arrayBuffer = await slice.arrayBuffer();
 
-        this.dc.send(arrayBuffer);
+        this.channel.send(arrayBuffer);
 
         transferredBytes += arrayBuffer.byteLength;
         bytesSinceLastUpdate += arrayBuffer.byteLength;
@@ -111,11 +125,11 @@ export class FileTransferSender {
 
         // Update progress every 100ms or on completion
         if (timeDiff >= 100 || transferredBytes === size) {
-          speedBps = (bytesSinceLastUpdate / timeDiff) * 1000;
+          speedBps = (bytesSinceLastUpdate / (timeDiff || 1)) * 1000;
           const speedMBs = `${(speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
 
           progress.transferredBytes = transferredBytes;
-          progress.percentage = Math.min(100, Math.round((transferredBytes / size) * 100));
+          progress.percentage = size > 0 ? Math.min(100, Math.round((transferredBytes / size) * 100)) : 100;
           progress.speedBps = speedBps;
           progress.speedMBs = speedMBs;
 
@@ -133,7 +147,7 @@ export class FileTransferSender {
         type: 'FILE_END',
         id,
       };
-      this.dc.send(JSON.stringify(trailer));
+      this.channel.send(JSON.stringify(trailer));
 
       progress.status = 'completed';
       progress.percentage = 100;
@@ -163,20 +177,10 @@ export class FileTransferSender {
       transfer.cancelled = true;
     }
   }
-
-  private waitForBufferLow(): Promise<void> {
-    return new Promise((resolve) => {
-      const onLow = () => {
-        this.dc.removeEventListener('bufferedamountlow', onLow);
-        resolve();
-      };
-      this.dc.addEventListener('bufferedamountlow', onLow);
-    });
-  }
 }
 
 export class FileTransferReceiver {
-  private dc: RTCDataChannel;
+  private channel: TransferChannel;
   private onProgressCb?: (progress: TransferProgress) => void;
   private onCompleteCb?: (progress: TransferProgress) => void;
   private onErrorCb?: (id: string, error: Error) => void;
@@ -198,33 +202,36 @@ export class FileTransferReceiver {
   private activeObjectUrls: string[] = [];
 
   constructor(options: FileTransferReceiverOptions) {
-    this.dc = options.dataChannel;
+    const rawChannel = options.channel || options.dataChannel;
+    if (!rawChannel) {
+      throw new Error('FileTransferReceiver requires a channel or dataChannel');
+    }
+
+    if ('send' in rawChannel && 'waitForDrain' in rawChannel) {
+      this.channel = rawChannel as TransferChannel;
+    } else {
+      this.channel = new WebRTCDataChannelAdapter(rawChannel as RTCDataChannel);
+    }
+
     this.onProgressCb = options.onProgress;
     this.onCompleteCb = options.onComplete;
     this.onErrorCb = options.onError;
     this.autoDownload = options.autoDownload ?? true;
 
-    this.setupDataChannelHandler();
+    this.channel.onMessage = (data: string | ArrayBuffer) => {
+      this.handleIncomingData(data);
+    };
+  }
+
+  public getChannelType(): 'webrtc' | 'relay' {
+    return this.channel.channelType;
   }
 
   public setAutoDownload(auto: boolean): void {
     this.autoDownload = auto;
   }
 
-  public setupDataChannelHandler(): void {
-    this.dc.binaryType = 'arraybuffer';
-    if (typeof this.dc.addEventListener === 'function') {
-      this.dc.addEventListener('message', (event: MessageEvent) => {
-        this.handleIncomingData(event.data);
-      });
-    } else {
-      this.dc.onmessage = (event) => {
-        this.handleIncomingData(event.data);
-      };
-    }
-  }
-
-  private handleIncomingData(data: ArrayBuffer | string): void {
+  public handleIncomingData(data: ArrayBuffer | string): void {
     try {
       if (typeof data === 'string') {
         const msg: TransferWireMessage = JSON.parse(data);
@@ -289,7 +296,7 @@ export class FileTransferReceiver {
     const timeDiff = now - item.lastProgressTime;
 
     if (timeDiff >= 100 || item.receivedBytes === item.meta.size) {
-      const speedBps = (item.bytesSinceLastUpdate / timeDiff) * 1000;
+      const speedBps = (item.bytesSinceLastUpdate / (timeDiff || 1)) * 1000;
       const speedMBs = `${(speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
       const percentage = item.meta.size > 0 
         ? Math.min(100, Math.round((item.receivedBytes / item.meta.size) * 100))
@@ -323,6 +330,11 @@ export class FileTransferReceiver {
     const objectUrl = URL.createObjectURL(blob);
     this.activeObjectUrls.push(objectUrl);
 
+    let thumbnailUrl: string | undefined = undefined;
+    if (item.meta.mimeType.startsWith('image/')) {
+      thumbnailUrl = objectUrl;
+    }
+
     const progress: TransferProgress = {
       id: item.meta.id,
       name: item.meta.name,
@@ -336,6 +348,7 @@ export class FileTransferReceiver {
       direction: 'receive',
       blob,
       objectUrl,
+      thumbnailUrl,
     };
 
     if (this.autoDownload) {

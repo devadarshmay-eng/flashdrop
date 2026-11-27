@@ -4,10 +4,9 @@
 
 :root {
   --bg: #0A0A0B;
-  --surface: #111113;
+  --surface: #141416;
   --surface-elevated: #18181B;
-  --border: #232327;
-  --border-subtle: #27272A;
+  --border: #26262A;
   --signal: #FF4D00;
   --connected: #10B981;
 }
@@ -18,8 +17,7 @@ html, body {
   padding: 0;
   background-color: #0A0A0B;
   color: #F4F4F5;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  letter-spacing: -0.015em;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -35,14 +33,23 @@ html, body {
   display: flex;
   flex-direction: column;
   background-color: #0A0A0B;
-  background-image: radial-gradient(#1C1C20 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-image: 
+    radial-gradient(ellipse 60% 40% at 50% -20%, rgba(255, 77, 0, 0.04), transparent),
+    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
   overflow: hidden;
 }
 
 .mono-num {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   font-variant-numeric: tabular-nums;
+}
+
+/* Progress bar gradient */
+.progress-fill {
+  background: linear-gradient(90deg, #D94100 0%, #FF4D00 100%);
+  transition: width 180ms linear;
 }
 
 /* Spinner */
@@ -52,7 +59,7 @@ html, body {
   }
 }
 .spinner-quiet {
-  animation: spin-quiet 0.85s linear infinite;
+  animation: spin-quiet 0.9s linear infinite;
   transform-origin: center center;
 }
 
@@ -61,13 +68,16 @@ html, body {
   .spinner-quiet {
     animation-duration: 3s;
   }
+  .progress-fill {
+    transition: none;
+  }
 }
 
-/* QR Corner brackets - sharp 14px 1.5px #52525B */
+/* QR Corner brackets */
 .bracket {
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-color: #52525B;
   pointer-events: none;
 }
@@ -105,8 +115,8 @@ html, body {
 }
 .transfer-scroll::-webkit-scrollbar-thumb {
   background: #232327;
-  border-radius: 3px;
+  border-radius: 2.5px;
 }
 .transfer-scroll::-webkit-scrollbar-thumb:hover {
-  background: #3F3F46;
+  background: #3A3A40;
 }

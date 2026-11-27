@@ -107,7 +107,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
       return;
     }
 
-    // Strip non-alphanumeric except existing hyphen
     const clean = val.replace(/[^A-Z0-9]/g, '');
     let formatted = clean;
 
@@ -225,7 +224,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
       return;
     }
 
-    // Try native BarcodeDetector if available in browser
     if (typeof (window as any).BarcodeDetector === 'function') {
       try {
         const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
@@ -239,7 +237,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
       }
     }
 
-    // jsQR canvas fallback
     const canvas = canvasRef.current || document.createElement('canvas');
     if (!canvasRef.current) canvasRef.current = canvas;
     canvas.width = video.videoWidth;
@@ -280,11 +277,11 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
   }, []);
 
   return (
-    <section className="flex-1 flex flex-col items-center justify-center min-h-0 py-6 px-4">
+    <section className="w-full max-w-4xl mx-auto flex-1 flex flex-col items-center justify-center min-h-0 py-8 px-4 sm:px-6">
       {/* Viewport View: Mobile Entry vs QR Instrument Panel */}
       {!showQrMode ? (
         /* Mobile-Ready Entry Panel */
-        <div className="w-full max-w-[400px] rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] overflow-hidden flex flex-col">
+        <div className="w-full max-w-[420px] rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col">
           {/* Header */}
           <div className="px-5 py-3.5 border-b border-[#232327] flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -299,7 +296,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
           </div>
 
           <div className="p-5 flex flex-col gap-4">
-            {/* Inline Camera Viewfinder (if active) */}
             {isScanning ? (
               <div className="flex flex-col items-center gap-3">
                 <div className="relative w-full aspect-square rounded-[8px] overflow-hidden bg-[#0A0A0B] border border-[#232327] flex items-center justify-center">
@@ -309,7 +305,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
                     playsInline
                     muted
                   />
-                  {/* Viewfinder crosshairs */}
                   <div className="absolute inset-8 border border-dashed border-[#FF4D00]/70 rounded-[6px] pointer-events-none flex items-center justify-center">
                     <span className="mono-num text-[10px] text-[#FF4D00] bg-[#0A0A0B]/80 px-1.5 py-0.5 rounded-[3px]">
                       AIM AT DESKTOP QR
@@ -326,7 +321,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
                 </button>
               </div>
             ) : (
-              /* Scan QR Button */
               <div className="flex flex-col gap-2">
                 <button
                   type="button"
@@ -354,7 +348,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
               </div>
             )}
 
-            {/* Divider */}
             <div className="flex items-center gap-2">
               <span className="flex-1 h-[1px] bg-[#232327]"></span>
               <span className="mono-num text-[10px] text-[#71717A] uppercase tracking-wider">
@@ -363,7 +356,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
               <span className="flex-1 h-[1px] bg-[#232327]"></span>
             </div>
 
-            {/* Manual Code Input Form */}
             <form onSubmit={handleConnectByCode} className="flex flex-col gap-2.5">
               <div className="flex gap-2">
                 <input
@@ -392,7 +384,6 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
             </form>
           </div>
 
-          {/* Secondary Toggle: Show QR on this device */}
           <div className="px-5 py-3 border-t border-[#232327] bg-[#0E0E10] flex items-center justify-center">
             <button
               type="button"
@@ -408,7 +399,7 @@ export const WaitingView: React.FC<WaitingViewProps> = ({
         </div>
       ) : (
         /* Desktop QR Instrument Panel */
-        <div className="w-full max-w-[400px] rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] overflow-hidden flex flex-col">
+        <div className="w-full max-w-[420px] rounded-[10px] bg-[#111113] border border-[#232327] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col">
           {/* Top Strip: Monospace room code + Copy Link button with shortcut */}
           <div className="px-4 py-3 border-b border-[#232327] flex items-center justify-between">
             <div className="flex items-center gap-2">

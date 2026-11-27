@@ -10,6 +10,8 @@ export type SignalingMessageType =
   | "PEER_DISCONNECTED"
   | "SESSION_EXPIRED"
   | "ERROR"
+  | "RELAY_DATA"
+  | "RELAY_ACK"
   | "offer"
   | "answer"
   | "ice-candidate"

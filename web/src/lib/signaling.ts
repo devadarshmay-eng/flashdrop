@@ -27,6 +27,7 @@ export class SignalingClient {
   private isIntentionallyClosed = false;
   private pingTimer: any = null;
   private messageQueue: SignalingMessage[] = [];
+  private relayListeners: Array<(msg: SignalingMessage) => void> = [];
 
   private onMessageCb?: (msg: SignalingMessage) => void;
   private onOpenCb?: () => void;
@@ -99,6 +100,16 @@ export class SignalingClient {
           }
         }
 
+        if (data.type === 'RELAY_DATA' || data.type === 'RELAY_ACK') {
+          for (const listener of this.relayListeners) {
+            try {
+              listener(data);
+            } catch (e) {
+              console.error('Relay listener error:', e);
+            }
+          }
+        }
+
         if (this.onMessageCb) {
           this.onMessageCb(data);
         }
@@ -140,6 +151,13 @@ export class SignalingClient {
 
   public setRole(role: SessionRole): void {
     this.role = role;
+  }
+
+  public addRelayListener(listener: (msg: SignalingMessage) => void): () => void {
+    this.relayListeners.push(listener);
+    return () => {
+      this.relayListeners = this.relayListeners.filter((l) => l !== listener);
+    };
   }
 
   public close(): void {

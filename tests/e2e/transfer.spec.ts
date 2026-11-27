@@ -99,12 +99,12 @@ test.describe('FlashDrop Autonomous Two-Peer Live Production E2E Suite', () => {
     // Check Connecting View and capture State 2 Screenshot
     await pageB.screenshot({ path: path.join(testOutputDir, 'state-2-connecting-mobile.png') });
 
-    // Assert Handshake: Both A and B transition to 'Connected (Direct P2P)' within 10s
-    console.log('  Waiting for WebRTC DataChannel connection on both peers...');
-    await expect(pageA.locator('text=Connected (Direct P2P)')).toBeVisible({ timeout: 15000 });
-    await expect(pageB.locator('text=Connected (Direct P2P)')).toBeVisible({ timeout: 15000 });
+    // Assert Handshake: Both A and B transition to connected within 15s (Direct P2P or Encrypted Relay)
+    console.log('  Waiting for connection on both peers...');
+    await expect(pageA.locator('[data-testid="connected-status"]')).toContainText(/Connected \((Direct P2P|Encrypted Relay)\)/, { timeout: 20000 });
+    await expect(pageB.locator('[data-testid="connected-status"]')).toContainText(/Connected \((Direct P2P|Encrypted Relay)\)/, { timeout: 20000 });
 
-    // Verify green indicator dot
+    // Verify indicator dot
     await expect(pageA.locator('[data-testid="connected-indicator"]')).toBeVisible();
     await expect(pageB.locator('[data-testid="connected-indicator"]')).toBeVisible();
 
@@ -211,8 +211,8 @@ test.describe('FlashDrop Autonomous Two-Peer Live Production E2E Suite', () => {
 
     // Context C should be rejected with code 4003 and transition to dissolved/error
     // While Context A and B remain securely connected!
-    await expect(pageA.locator('text=Connected (Direct P2P)')).toBeVisible();
-    await expect(pageB.locator('text=Connected (Direct P2P)')).toBeVisible();
+    await expect(pageA.locator('[data-testid="connected-status"]')).toContainText(/Connected \((Direct P2P|Encrypted Relay)\)/);
+    await expect(pageB.locator('[data-testid="connected-status"]')).toContainText(/Connected \((Direct P2P|Encrypted Relay)\)/);
     console.log('  ✓ 3rd peer rejected cleanly without disrupting active session.');
     await contextC.close();
 
@@ -241,5 +241,106 @@ test.describe('FlashDrop Autonomous Two-Peer Live Production E2E Suite', () => {
     await contextB.close();
 
     console.log('\n=== ALL 6 REAL-WORLD USER STEPS PASSED AGAINST LIVE PRODUCTION! ===');
+  });
+
+  test('Autonomous WebSocket Encrypted Relay Fallback with SHA-256 Byte-for-Byte Match', async ({ browser }) => {
+    console.log('\n=============================================================');
+    console.log('RUNNING WEBSOCKET ENCRYPTED RELAY FALLBACK TEST');
+    console.log('=============================================================');
+
+    // Context A (Desktop Host with WebRTC connection failure simulated)
+    const contextA = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      acceptDownloads: true,
+    });
+
+    // In Context A, simulate WebRTC failure after offer/answer so fallback timer triggers
+    await contextA.addInitScript(() => {
+      const origSetRemote = RTCPeerConnection.prototype.setRemoteDescription;
+      RTCPeerConnection.prototype.setRemoteDescription = function () {
+        setTimeout(() => {
+          try {
+            Object.defineProperty(this, 'connectionState', { value: 'failed', configurable: true });
+            this.dispatchEvent(new Event('connectionstatechange'));
+          } catch {}
+        }, 150);
+        return origSetRemote.apply(this, arguments as any);
+      };
+    });
+
+    const pageA = await contextA.newPage();
+    await pageA.goto('https://getflashdrop.pages.dev/');
+    await pageA.waitForLoadState('networkidle');
+
+    // Extract Session URL
+    const qrImage = pageA.locator('img.qr-code-image, img[alt*="Scan to connect"]');
+    await expect(qrImage).toBeVisible();
+    const sessionUrl = await pageA.evaluate(() => {
+      const img = document.querySelector('img[alt*="Scan to connect"]') as HTMLImageElement;
+      return img?.getAttribute('data-session-url') || img?.dataset?.sessionUrl || window.location.href;
+    });
+    console.log(`  Relay Test Session URL: ${sessionUrl}`);
+
+    // Context B (Mobile Guest with WebRTC failure simulated)
+    const contextB = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      acceptDownloads: true,
+    });
+    await contextB.addInitScript(() => {
+      const origSetRemote = RTCPeerConnection.prototype.setRemoteDescription;
+      RTCPeerConnection.prototype.setRemoteDescription = function () {
+        setTimeout(() => {
+          try {
+            Object.defineProperty(this, 'connectionState', { value: 'failed', configurable: true });
+            this.dispatchEvent(new Event('connectionstatechange'));
+          } catch {}
+        }, 150);
+        return origSetRemote.apply(this, arguments as any);
+      };
+    });
+
+    const pageB = await contextB.newPage();
+    await pageB.goto(sessionUrl!);
+
+    // Expect fallback to activate within 6s and show Connected (Encrypted Relay)
+    console.log('  Waiting for Encrypted Relay fallback activation on both peers...');
+    await expect(pageA.locator('text=Connected (Encrypted Relay)')).toBeVisible({ timeout: 15000 });
+    await expect(pageB.locator('text=Connected (Encrypted Relay)')).toBeVisible({ timeout: 15000 });
+
+    // Verify amber indicator dot and WS RELAY telemetry badge
+    await expect(pageA.locator('[data-testid="connected-indicator"]')).toHaveClass(/bg-\[#F59E0B\]/);
+    await expect(pageA.locator('text=WS RELAY')).toBeVisible();
+    console.log('  ✓ Both peers successfully fell back to Connected (Encrypted Relay)!');
+
+    // Test file transfer over WebSocket Relay (512 KB)
+    const relaySize = 512 * 1024;
+    const relayBuffer = crypto.randomBytes(relaySize);
+    const expectedRelayHash = computeSha256(relayBuffer);
+    const relayFileName = 'relay-fallback-test.bin';
+    const relayFilePath = path.join(testOutputDir, relayFileName);
+    fs.writeFileSync(relayFilePath, relayBuffer);
+
+    const downloadPromiseB = pageB.waitForEvent('download', { timeout: 30000 });
+    const fileInputA = pageA.locator('input[type="file"]');
+    await fileInputA.setInputFiles(relayFilePath);
+
+    const saveButtonB = pageB.locator('[data-testid="save-btn"], button:has-text("Save")').first();
+    await expect(saveButtonB).toBeVisible({ timeout: 30000 });
+    await saveButtonB.click();
+
+    const downloadB = await downloadPromiseB;
+    const downloadedPathB = path.join(testOutputDir, 'received-' + relayFileName);
+    await downloadB.saveAs(downloadedPathB);
+
+    const receivedRelayBuffer = fs.readFileSync(downloadedPathB);
+    const actualRelayHash = computeSha256(receivedRelayBuffer);
+    console.log(`  Relay actual SHA-256:   ${actualRelayHash}`);
+    console.log(`  Relay expected SHA-256: ${expectedRelayHash}`);
+    expect(actualRelayHash).toBe(expectedRelayHash);
+    expect(receivedRelayBuffer.length).toBe(relaySize);
+    console.log('  ✓ WebSocket Encrypted Relay file streaming verified 100% byte-for-byte identical!');
+
+    await contextA.close();
+    await contextB.close();
   });
 });

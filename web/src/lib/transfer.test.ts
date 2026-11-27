@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { FileTransferSender, FileTransferReceiver } from './transfer';
 import { PeerConnectionManager } from './webrtc';
+import { WebSocketRelayChannelAdapter } from './channel';
 
 describe('WebRTC P2P Transfer Engine', () => {
-  describe('16KB Chunking and Reassembly', () => {
+  describe('16KB Chunking and Reassembly (WebRTC)', () => {
     it('slices a file into exact 16KB chunks and reassembles byte-for-byte', async () => {
       // 50KB payload
       const testData = new Uint8Array(50 * 1024);
@@ -16,6 +17,7 @@ describe('WebRTC P2P Transfer Engine', () => {
       const receiverEvents: { onmessage?: (e: any) => void } = {};
       const mockReceiverDc: any = {
         binaryType: 'arraybuffer',
+        readyState: 'open',
         set onmessage(fn: any) {
           receiverEvents.onmessage = fn;
         },
@@ -26,7 +28,7 @@ describe('WebRTC P2P Transfer Engine', () => {
 
       let completedProgress: any = null;
       const receiver = new FileTransferReceiver({
-        dataChannel: mockReceiverDc,
+        channel: mockReceiverDc,
         autoDownload: false,
         onComplete: (progress) => {
           completedProgress = progress;
@@ -37,6 +39,7 @@ describe('WebRTC P2P Transfer Engine', () => {
       const mockSenderDc: any = {
         bufferedAmount: 0,
         bufferedAmountLowThreshold: 65536,
+        readyState: 'open',
         send: vi.fn((data: any) => {
           // Route sent data directly to receiver
           if (receiverEvents.onmessage) {
@@ -48,7 +51,7 @@ describe('WebRTC P2P Transfer Engine', () => {
       };
 
       const sender = new FileTransferSender({
-        dataChannel: mockSenderDc,
+        channel: mockSenderDc,
       });
 
       await sender.sendFile(originalBlob, 'testfile.bin');
@@ -81,6 +84,7 @@ describe('WebRTC P2P Transfer Engine', () => {
       const mockSenderDc: any = {
         bufferedAmount: 0,
         bufferedAmountLowThreshold: 65536,
+        readyState: 'open',
         send: vi.fn(function (data: any) {
           if (data instanceof ArrayBuffer) {
             // Simulate buffer filling up on second chunk
@@ -108,13 +112,90 @@ describe('WebRTC P2P Transfer Engine', () => {
       };
 
       const sender = new FileTransferSender({
-        dataChannel: mockSenderDc,
+        channel: mockSenderDc,
       });
 
       await sender.sendFile(originalBlob, 'backpressure-test.bin');
 
       expect(pauseTriggered).toBe(true);
       expect(mockSenderDc.addEventListener).toHaveBeenCalledWith('bufferedamountlow', expect.any(Function));
+    });
+  });
+
+  describe('WebSocket Relay Channel Fallback', () => {
+    it('transfers files with credit sliding window (8 chunks) and RELAY_ACK flow control', async () => {
+      // 160KB payload = 10 chunks of 16KB (exceeds max in-flight of 8)
+      const testData = new Uint8Array(160 * 1024);
+      for (let i = 0; i < testData.length; i++) {
+        testData[i] = (i + 13) % 256;
+      }
+      const originalBlob = new Blob([testData]);
+
+      let relayListenerHost: ((msg: any) => void) | null = null;
+      let relayListenerGuest: ((msg: any) => void) | null = null;
+
+      // Mock signaling client for host
+      const hostSignaling: any = {
+        send: vi.fn((msg: any) => {
+          // Route to guest
+          if (relayListenerGuest) {
+            relayListenerGuest(msg);
+          }
+        }),
+        addRelayListener: vi.fn((listener: any) => {
+          relayListenerHost = listener;
+          return () => {};
+        }),
+      };
+
+      // Mock signaling client for guest
+      const guestSignaling: any = {
+        send: vi.fn((msg: any) => {
+          // Route back to host (e.g. RELAY_ACK)
+          if (relayListenerHost) {
+            relayListenerHost(msg);
+          }
+        }),
+        addRelayListener: vi.fn((listener: any) => {
+          relayListenerGuest = listener;
+          return () => {};
+        }),
+      };
+
+      const hostChannel = new WebSocketRelayChannelAdapter(hostSignaling, 8);
+      const guestChannel = new WebSocketRelayChannelAdapter(guestSignaling, 8);
+
+      expect(hostChannel.channelType).toBe('relay');
+      expect(guestChannel.channelType).toBe('relay');
+
+      let completedProgress: any = null;
+      const receiver = new FileTransferReceiver({
+        channel: guestChannel,
+        autoDownload: false,
+        onComplete: (p) => {
+          completedProgress = p;
+        },
+      });
+      expect(receiver).toBeDefined();
+
+      const sender = new FileTransferSender({
+        channel: hostChannel,
+      });
+
+      await sender.sendFile(originalBlob, 'relay-file.bin');
+
+      expect(completedProgress).toBeDefined();
+      expect(completedProgress.size).toBe(testData.length);
+      expect(completedProgress.name).toBe('relay-file.bin');
+
+      const receivedBuffer = await completedProgress.blob.arrayBuffer();
+      const receivedArray = new Uint8Array(receivedBuffer);
+      expect(receivedArray).toEqual(testData);
+
+      // Verify guest sent RELAY_ACK messages back to host
+      expect(guestSignaling.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'RELAY_ACK' })
+      );
     });
   });
 
